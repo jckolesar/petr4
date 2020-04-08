@@ -9,6 +9,9 @@ module EvalEnv : sig
 
   val empty_eval_env : t
 
+  val get_trace : t -> entries
+  val insert_entry_into_trace : t -> Table.pre_entry -> t
+
   val get_toplevel : t -> t
   val get_val_firstlevel : t -> (string * value) list
 

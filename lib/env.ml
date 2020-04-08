@@ -69,13 +69,19 @@ module EvalEnv = struct
     vs : value env;
     (* map variables to their types; only needed in a few cases *)
     typ : Types.Type.t env;
+    trace : entries
   }
 
   let empty_eval_env = {
     decl = [[]];
     vs = [[]];
     typ = [[]];
-  }
+    trace = []
+    }
+
+  let get_trace (env : t) : entries = env.trace
+  let insert_entry_into_trace (env : t) (en : Table.pre_entry) =
+    {env with trace=en::env.trace}
 
   let get_toplevel (env : t) : t =
     let get_last l =
@@ -84,7 +90,8 @@ module EvalEnv = struct
       | h :: _ -> [h] in
     {decl = get_last env.decl;
      vs = get_last env.vs;
-     typ = get_last env.typ;}
+     typ = get_last env.typ;
+     trace = env.trace}
 
   let get_val_firstlevel env =
     List.hd_exn (env.vs)
@@ -140,12 +147,14 @@ module EvalEnv = struct
   let push_scope (e : t) : t =
     {decl = push e.decl;
      vs = push e.vs;
-     typ = push e.typ;}
+     typ = push e.typ;
+     trace = e.trace}
 
   let pop_scope (e:t) : t =
     {decl = pop e.decl;
      vs = pop e.vs;
-     typ = pop e.typ;}
+     typ = pop e.typ;
+     trace = e.trace}
 
   (* TODO: for the purpose of testing expressions and simple statements only*)
   let print_env (e:t) : unit =
@@ -319,5 +328,6 @@ module CheckerEnv = struct
   let eval_env_of_t (cenv: t) : EvalEnv.t =
     { decl = [[]];
       vs = cenv.const;
-      typ = [[]];}
+      typ = [[]];
+      trace = []}
 end
