@@ -543,9 +543,15 @@ and eval_table (env : EvalEnv.t) (ctrl : ctrl) (key : value list)
     (name : string) (actions : Table.action_ref list)
     (default : Table.action_ref) : EvalEnv.t * signal * value =
   let l = List.filter entries ~f:(fun (s,a) -> values_match_set key s) in
-  let action = match l with
-               | [] -> default
-               | _ -> List.hd_exn l |> snd in
+  let env, entry = match l with
+    | [] -> env, None
+    | h::t -> (* EvalEnv.insert_entry_into_trace env h *) env,Some h in
+  let action = match entry with
+    | None -> default
+    | Some entry' -> snd entry' in
+  (* let action = match l with
+   *              | [] -> default
+   *              | _ -> List.hd_exn l |> snd in *)
   let action_name = Table.((snd action).name |> snd) in
   let actionv = EvalEnv.find_val action_name env in
   let args = Table.((snd action).args) in
@@ -2795,7 +2801,7 @@ let eval_main (env : EvalEnv.t) (ctrl : ctrl) (pkt : packet_in) : packet_in =
   let name =
     match env |> EvalEnv.find_val "main" |> assert_package |> fst |> snd with
     | Declaration.PackageType {name=(_,n);_} -> n
-    | _ -> failwith "main is no a package" in
+    | _ -> failwith "main is not a package" in
   match name with
   | "V1Switch"     -> Target.V1Model.eval_pipeline
                         env
