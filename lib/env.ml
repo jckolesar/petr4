@@ -69,7 +69,7 @@ module EvalEnv = struct
     vs : value env;
     (* map variables to their types; only needed in a few cases *)
     typ : Types.Type.t env;
-    trace : entries
+    trace : (set * Table.action_ref) list
   }
 
   let empty_eval_env = {
@@ -79,8 +79,8 @@ module EvalEnv = struct
     trace = []
     }
 
-  let get_trace (env : t) : entries = env.trace
-  let insert_entry_into_trace (env : t) (en : Table.pre_entry) =
+  let get_trace env = env.trace
+  let insert_entry_into_trace env en =
     {env with trace=en::env.trace}
 
   let get_toplevel (env : t) : t =

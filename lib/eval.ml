@@ -545,7 +545,7 @@ and eval_table (env : EvalEnv.t) (ctrl : ctrl) (key : value list)
   let l = List.filter entries ~f:(fun (s,a) -> values_match_set key s) in
   let env, entry = match l with
     | [] -> env, None
-    | h::t -> (* EvalEnv.insert_entry_into_trace env h *) env,Some h in
+    | h::t -> EvalEnv.insert_entry_into_trace env h,Some h in
   let action = match entry with
     | None -> default
     | Some entry' -> snd entry' in
