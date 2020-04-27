@@ -999,3 +999,366 @@ and Block : sig
 type program =
     Program of Declaration.t list [@name "program"]
 [@@deriving sexp,yojson]
+
+(* TODO attempt at making a new tree visitor
+
+A program is a list of declarations
+*)
+
+type ('a, 'b) program_visitor = {
+  visit_program: 'a -> Declaration.t list -> 'b;
+}
+
+(*
+TODO Annotation
+They can contain arguments, which can contain expressions
+However, they are not directly recursive
+*)
+
+(*
+TODO Parameter
+*)
+
+(*
+TODO Op looks simple enough not to need anything special
+*)
+
+(*
+TODO Type
+These can contain expressions
+*)
+
+(*
+TODO MethodPrototype
+*)
+
+(*
+TODO Argument
+*)
+
+(*
+TODO Direction looks simple
+*)
+
+type ('a, 'b) expression_visitor = {
+  visit_true: 'a -> 'b;
+  visit_false: 'a -> 'b;
+  visit_int: 'a -> P4Int.t -> 'b;
+  visit_string: 'a -> P4String.t -> 'b;
+  visit_name: 'a -> P4String.t -> 'b;
+  visit_top_level: 'a -> P4String.t -> 'b;
+  enter_array_access: 'a -> ('a * 'a);
+  exit_array_access: 'b -> 'b -> 'b;
+  enter_bit_string_access: 'a -> ('a * 'a * 'a);
+  exit_bit_string_access: 'b -> 'b -> 'b -> 'b;
+  (* TODO should there be nil and cons cases? *)
+  (* enter_list: 'a -> Expression.t list -> 'a list;
+  exit_list: 'b list -> 'b; *)
+  visit_list_nil: 'a -> 'b;
+  (* head input/output, then tail input/output *)
+  enter_list_cons: 'a -> ('a * 'a);
+  exit_list_cons: 'b -> 'b -> 'b;
+  (* TODO is this input necessary for both enter and exit? *)
+  enter_unary_op: 'a -> Op.uni -> 'a;
+  exit_unary_op: 'b -> 'b;
+  enter_binary_op: 'a -> Op.bin -> ('a * 'a);
+  exit_binary_op: 'b -> 'b -> 'b;
+  enter_cast: 'a -> Type.t -> 'a;
+  exit_cast: 'b -> 'b;
+  visit_type_member: 'a -> { typ: Type.t; name: P4String.t } -> 'b;
+  visit_error_member: 'a -> P4String.t -> 'b;
+  enter_expression_member: 'a -> P4String.t -> 'a;
+  exit_expression_member: 'b -> 'b;
+  enter_ternary: 'a -> ('a * 'a * 'a);
+  exit_ternary: 'b -> 'b -> 'b -> 'b;
+  (* TODO not sure how to have a regular way of handling cases like this *)
+  (* enter_function_call:
+    'a ->
+    { func: t;
+      type_args: Type.t list;
+      args: Argument.t list } -> 'a; *)
+  (* approach for now:  discard side information for recursive cases *)
+  enter_function_call: 'a -> 'a;
+  exit_function_call: 'b -> 'b;
+  visit_nameless_instantiation:
+    'a ->
+    { typ: Type.t;
+      args: Argument.t list } -> 'b;
+  enter_mask: 'a -> ('a * 'a);
+  exit_mask: 'b -> 'b -> 'b;
+  enter_range: 'a -> ('a * 'a);
+  exit_range: 'b -> 'b -> 'b;
+}
+
+let rec expression_visit_helper v acc = function
+  | True -> v.visit_true acc
+  | False -> v.visit_false acc
+  | Int i -> v.visit_int acc i
+  | String s -> v.visit_string acc s
+  | Name s -> v.visit_name acc s
+  | TopLevel s -> v.visit_top_level acc s
+  | ArrayAccess {array; index} ->
+    let (acc_array, acc_index) = v.enter_array_access acc in
+    v.exit_array_access (expression_visit_helper v acc_array array)
+                        (expression_visit_helper v acc_index index)
+  | BitStringAccess {bits; lo; hi} ->
+    let (acc_bits, acc_lo, acc_hi) = v.enter_bit_string_access acc in
+    v.exit_bit_string_access (expression_visit_helper v acc_bits bits)
+                             (expression_visit_helper v acc_lo lo)
+                             (expression_visit_helper v acc_hi hi)
+  | List {values} -> begin match values with
+    | [] -> v.visit_list_nil acc
+    | h :: t -> let (acc_h, acc_t) = v.enter_list_cons acc in
+      v.exit_list_cons (expression_visit_helper v acc_h h)
+                       (expression_visit_helper v acc_t (List {values = t}))
+      end
+  | UnaryOp {op; arg} ->
+    let acc' = v.enter_unary_op acc op in
+    v.exit_unary_op (expression_visit_helper v acc' arg)
+  | BinaryOp {op; args} ->
+    let (acc1, acc2) = v.enter_binary_op acc op in
+    v.exit_binary_op (expression_visit_helper v acc1 (fst args))
+                     (expression_visit_helper v acc2 (snd args))
+  | Cast {typ; expr} ->
+    let acc' = v.enter_cast acc typ in
+    v.exit_cast (expression_visit_helper v acc' expr)
+  | TypeMember tm -> v.visit_type_member acc tm
+  | ErrorMember s -> v.visit_error_member acc s
+  | ExpressionMember {expr; name} ->
+    let acc' = v.enter_expression_member acc name in
+    v.exit_expression_member (expression_visit_helper v acc' expr)
+  | Ternary {cond; tru; fls} ->
+    let (acc_cond, acc_tru, acc_fls) = v.enter_ternary acc in
+    v.exit_ternary (expression_visit_helper v acc_cond cond)
+                   (expression_visit_helper v acc_tru tru)
+                   (expression_visit_helper v acc_fls fls)
+  (* TODO this discards side information *)
+  (* note that arguments can contain expressions *)
+  | FunctionCall {func; type_args; args} ->
+    let acc' = v.enter_function_call acc in
+    v.exit_function_call (expression_visit_helper v acc' func)
+  | NamelessInstantiation ni -> v.visit_nameless_instantiation ni
+  | Mask {expr; mask} ->
+    let (acc_expr, acc_mask) = v.enter_mask acc in
+    v.exit_mask (expression_visit_helper v acc_expr expr)
+                (expression_visit_helper v acc_mask mask)
+  | Range {lo; hi} ->
+    let (acc_lo, acc_hi) = v.enter_range acc in
+    v.exit_range (expression_visit_helper v acc_lo lo)
+                 (expression_visit_helper v acc_hi hi)
+
+(*
+TODO Table not recursive
+Only one use elsewhere in types, might not need anything
+*)
+
+(*
+TODO Match not recursive
+Uses elsewhere are in Table and Parser
+*)
+
+(*
+TODO Parser not recursive
+One use elsewhere, it's in Declaration
+The side information for it is left out for now
+*)
+
+(* TODO Declaration is recursive *)
+
+type ('a, 'b) declaration_visitor = {
+  visit_constant:
+    'a ->
+    { annotations: Annotation.t list;
+      typ: Type.t [@key "type"];
+      name: P4String.t;
+      value: Expression.t } -> 'b;
+  visit_instantiation:
+    'a ->
+    { annotations: Annotation.t list;
+      typ: Type.t [@key "type"];
+      args: Argument.t list;
+      name: P4String.t;
+      init: Block.t option; } -> 'b;
+  (* TODO How to enter a recursive list?
+  Could have enter nil and enter cons
+  Correspondingly, exit nil and exit cons
+  Is the representation here redundant?
+  *)
+  (*
+  enter_parser:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list;
+      constructor_params: Parameter.t list;
+      locals: t list;
+      states: Parser.state list } -> 'a list;
+  exit_parser: 'b list -> 'b;
+  *)
+  (* leaving out side information for now *)
+  visit_parser_nil: 'a -> 'b;
+  enter_parser_cons: 'a -> ('a * 'a);
+  exit_parser_cons: 'b -> 'b -> 'b;
+  visit_control_nil: 'a -> 'b;
+  enter_control_cons: 'a -> ('a * 'a);
+  exit_control_cons: 'b -> 'b -> 'b;
+  visit_function:
+    'a ->
+    { return: Type.t;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list;
+      body: Block.t } -> 'b;
+  visit_extern_function:
+    'a ->
+    { annotations: Annotation.t list;
+      return: Type.t;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list } -> 'b;
+  visit_variable:
+    'a ->
+    { annotations: Annotation.t list;
+      typ: Type.t [@key "type"];
+      name: P4String.t;
+      init: Expression.t option } -> 'b;
+  visit_value_set:
+    'a ->
+    { annotations: Annotation.t list;
+          typ: Type.t [@key "type"];
+          size: Expression.t;
+          name: P4String.t } -> 'b;
+  visit_action:
+    'a ->
+    { annotations: Annotation.t list;
+          name: P4String.t;
+          params: Parameter.t list;
+          body: Block.t } -> 'b;
+  visit_table:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      properties: Table.property list } -> 'b:
+  visit_header:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      fields: Declaration.field list } -> 'b;
+  visit_header_union:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      fields: Declaration.field list } -> 'b;
+  visit_struct:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      fields: Declaration.field list } -> 'b;
+  visit_error: 'a -> { members: P4String.t list } -> 'b;
+  visit_match_kind: 'a -> { members: P4String.t list } -> 'b;
+  visit_enum:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      members: P4String.t list } -> 'b;
+  visit_serializable_enum:
+    'a ->
+    { annotations: Annotation.t list;
+      typ: Type.t [@key "type"];
+      name: P4String.t;
+      members: (P4String.t * Expression.t) list } -> 'b;
+  visit_extern_object:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      type_params: P4String.t list;
+      methods: MethodPrototype.t list } -> 'b;
+  (* TODO these next two groups of cases ignore side information *)
+  visit_type_def_type: 'a -> Type.t -> 'b;
+  enter_type_def_decl: 'a -> 'a;
+  exit_type_def_decl: 'b -> 'b;
+  visit_new_type_type: 'a -> Type.t -> 'b;
+  enter_new_type_decl: 'a -> 'a;
+  exit_new_type_decl: 'b -> 'b;
+  visit_control_type:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list } -> 'b;
+  visit_parser_type:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list } -> 'b;
+  visit_package_type:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      type_params: P4String.t list;
+      params: Parameter.t list } -> 'b;
+}
+
+(*
+TODO What is an alternative?  Is it like a variant?
+TypeDef and NewType involve recursion with alternatives
+
+What does the "info" mean?
+Also, why the "pre" distinction?
+*)
+
+(* TODO Statement is recursive *)
+
+type ('a, 'b) statement_visitor = {
+  visit_method_call:
+    'a ->
+    { func: Expression.t;
+      type_args: Type.t list;
+      args: Argument.t list } -> 'b;
+  visit_assignment:
+    'a ->
+    { lhs: Expression.t;
+      rhs: Expression.t } -> 'b;
+  visit_direct_application:
+    'a ->
+    { typ: Type.t;
+      args: Argument.t list } -> 'b;
+  (* the right member of the output is unused in the None case *)
+  enter_conditional: 'a -> Expression.t -> ('a * 'a);
+  exit_conditional: 'b -> 'b option -> 'b;
+  visit_block_statement: 'a -> { block: Block.t } -> 'b;
+  visit_exit: 'a -> 'b;
+  visit_empty_statement: 'a -> 'b;
+  visit_return: 'a -> { expr: Expression.t option } -> 'b;
+  visit_switch:
+    'a ->
+    { expr: Expression.t;
+      cases: switch_case list } -> 'b;
+  visit_declaration_statement: 'a -> { decl: Declaration.t } -> 'b;
+}
+
+let rec statement_visit_helper v acc = function
+  | MethodCall mc -> v.visit_method_call acc mc
+  | Assignment a -> v.visit_assignment acc a
+  | DirectApplication da -> v.visit_direct_application acc da
+  | Conditional {cond; tru; fls} ->
+    let (acc_tru, acc_fls) = v.enter_conditional acc cond in
+    begin match fls with
+      | None -> v.exit_conditional
+        (statement_visit_helper v acc_tru tru) None
+      | Some fls_branch -> v.exit_conditional
+        (statement_visit_helper v acc_tru tru)
+        (statement_visit_helper v acc_fls fls_branch)
+    end
+  | BlockStatement bs -> v.visit_block_statement acc bs
+  | Exit -> v.visit_exit acc
+  | EmptyStatement -> v.visit_empty_statement acc
+  | Return r -> v.visit_return acc r
+  | Switch s -> v.visit_switch acc s
+  | DeclarationStatement ds -> v.visit_declaration_statement acc ds
+
+(* TODO Block not recursive *)
+
+(* TODO Program not recursive *)
