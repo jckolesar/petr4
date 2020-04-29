@@ -1043,7 +1043,7 @@ type ('a, 'b) type_visitor = {
   enter_specialized_type_cons: 'a -> ('a * 'a);
   exit_specialized_type_cons: 'b -> 'b -> 'b;
   (* TODO side information can be recursive *)
-  enter_header_stack: 'a -> 'a;
+  enter_header_stack: 'a -> Expression.t -> 'a;
   exit_header_stack: 'b -> 'b;
   visit_tuple_nil: 'a -> 'b;
   enter_tuple_cons: 'a -> ('a * 'a);
@@ -1052,6 +1052,36 @@ type ('a, 'b) type_visitor = {
   visit_void: 'a -> 'b;
   visit_dont_care: 'a -> 'b;
 }
+
+let rec type_visit_helper v acc = function
+  | Bool -> v.visit_bool acc
+  | Error -> v.visit_error acc
+  | Integer -> v.visit_integer acc
+  | IntType e -> v.visit_int_type acc e
+  | BitType e -> v.visit_bit_type acc e
+  | VarBit e -> v.visit_var_bit acc e
+  | TopLevelType s -> v.visit_top_level_type acc s
+  | TypeName s -> v.visit_type_name acc s
+  | SpecializedType {base; args} -> begin match args with
+    | [] -> let acc' = v.enter_specialized_type_nil acc in
+      v.exit_specialized_type_nil (type_visit_helper v acc' base)
+    | h :: t -> let (acc_h, acc_t) = v.enter_specialized_type_cons acc in
+      v.exit_specialized_type_cons (type_visit_helper v acc_h h)
+                                   (type_visit_helper v acc_t
+                                   (SpecializedType {base = base; args = t}))
+    end
+  | HeaderStack {header; size} ->
+    let acc' = v.enter_header_stack acc size in
+    v.exit_header_stack (type_visit_helper v acc' header)
+  | Tuple l -> begin match l with
+    | [] -> v.visit_tuple_nil acc
+    | h :: t -> let (acc_h, acc_t) = v.enter_tuple_cons acc in
+      v.exit_tuple_cons (type_visit_helper v acc_h h)
+                        (type_visit_helper acc_t (Tuple t))
+    end
+  | String -> v.visit_string acc
+  | Void -> v.visit_void acc
+  | DontCare -> v.visit_dont_care acc
 
 (*
 TODO MethodPrototype
