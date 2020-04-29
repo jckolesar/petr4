@@ -1024,9 +1024,34 @@ TODO Op looks simple enough not to need anything special
 *)
 
 (*
-TODO Type
+TODO Type is recursive
 These can contain expressions
 *)
+
+type ('a, 'b) type_visitor = {
+  visit_bool: 'a -> 'b;
+  visit_error: 'a -> 'b;
+  visit_integer: 'a -> 'b;
+  visit_int_type: 'a -> Expression.t -> 'b;
+  visit_bit_type: 'a -> Expression.t -> 'b;
+  visit_var_bit: 'a -> Expression.t -> 'b;
+  visit_top_level_type: 'a -> P4String.t -> 'b;
+  visit_type_name: 'a -> P4String.t -> 'b;
+  (* TODO how to handle this case? *)
+  enter_specialized_type_nil: 'a -> 'a;
+  exit_specialized_type_nil: 'b -> 'b;
+  enter_specialized_type_cons: 'a -> ('a * 'a);
+  exit_specialized_type_cons: 'b -> 'b -> 'b;
+  (* TODO side information can be recursive *)
+  enter_header_stack: 'a -> 'a;
+  exit_header_stack: 'b -> 'b;
+  visit_tuple_nil: 'a -> 'b;
+  enter_tuple_cons: 'a -> ('a * 'a);
+  exit_tuple_cons: 'b -> 'b -> 'b;
+  visit_string: 'a -> 'b;
+  visit_void: 'a -> 'b;
+  visit_dont_care: 'a -> 'b;
+}
 
 (*
 TODO MethodPrototype
@@ -1058,6 +1083,7 @@ type ('a, 'b) expression_visitor = {
   (* head input/output, then tail input/output *)
   enter_list_cons: 'a -> ('a * 'a);
   exit_list_cons: 'b -> 'b -> 'b;
+  visit_record: 'a -> { entries: KeyValue.t list } -> 'b;
   (* TODO is this input necessary for both enter and exit? *)
   enter_unary_op: 'a -> Op.uni -> 'a;
   exit_unary_op: 'b -> 'b;
@@ -1112,6 +1138,7 @@ let rec expression_visit_helper v acc = function
       v.exit_list_cons (expression_visit_helper v acc_h h)
                        (expression_visit_helper v acc_t (List {values = t}))
       end
+  | Record r -> v.visit_record acc r
   | UnaryOp {op; arg} ->
     let acc' = v.enter_unary_op acc op in
     v.exit_unary_op (expression_visit_helper v acc' arg)
@@ -1302,8 +1329,7 @@ type ('a, 'b) declaration_visitor = {
 }
 
 (*
-TODO What is an alternative?  Is it like a variant?
-TypeDef and NewType involve recursion with alternatives
+TODO Left 'a and Right 'b are the alternative constructors
 
 What does the "info" mean?
 Also, why the "pre" distinction?
