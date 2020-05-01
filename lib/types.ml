@@ -1085,14 +1085,29 @@ let rec type_visit_helper v acc = function
 
 (*
 TODO MethodPrototype
+They are not directly recursive; they can appear in declarations
+Statements can contain declarations
+Block and Parser can contain statements
+Statements and declarations can contain blocks
+Declarations can contain parsers
+This means that there's no cycle back to MethodPrototype
 *)
 
 (*
 TODO Argument
+Expressions can contain arguments
+Arguments can contain expressions, so there's a cycle
 *)
+
+type ('a, 'b) argument_visitor = {
+  visit_expression: 'a -> { value: Expression.t } -> 'b;
+  visit_key_value: 'a -> { value: Expression.t } -> 'b;
+  visit_missing: 'a -> 'b;
+}
 
 (*
 TODO Direction looks simple
+No containment of other types at all
 *)
 
 type ('a, 'b) expression_visitor = {
@@ -1106,9 +1121,6 @@ type ('a, 'b) expression_visitor = {
   exit_array_access: 'b -> 'b -> 'b;
   enter_bit_string_access: 'a -> ('a * 'a * 'a);
   exit_bit_string_access: 'b -> 'b -> 'b -> 'b;
-  (* TODO should there be nil and cons cases? *)
-  (* enter_list: 'a -> Expression.t list -> 'a list;
-  exit_list: 'b list -> 'b; *)
   visit_list_nil: 'a -> 'b;
   (* head input/output, then tail input/output *)
   enter_list_cons: 'a -> ('a * 'a);
@@ -1128,13 +1140,8 @@ type ('a, 'b) expression_visitor = {
   enter_ternary: 'a -> ('a * 'a * 'a);
   exit_ternary: 'b -> 'b -> 'b -> 'b;
   (* TODO not sure how to have a regular way of handling cases like this *)
-  (* enter_function_call:
-    'a ->
-    { func: t;
-      type_args: Type.t list;
-      args: Argument.t list } -> 'a; *)
-  (* approach for now:  discard side information for recursive cases *)
-  enter_function_call: 'a -> 'a;
+  (* reworking this to use the side information for now *)
+  enter_function_call: 'a -> Type.t list -> Argument.t list -> 'a;
   exit_function_call: 'b -> 'b;
   visit_nameless_instantiation:
     'a ->
@@ -1189,10 +1196,8 @@ let rec expression_visit_helper v acc = function
     v.exit_ternary (expression_visit_helper v acc_cond cond)
                    (expression_visit_helper v acc_tru tru)
                    (expression_visit_helper v acc_fls fls)
-  (* TODO this discards side information *)
-  (* note that arguments can contain expressions *)
   | FunctionCall {func; type_args; args} ->
-    let acc' = v.enter_function_call acc in
+    let acc' = v.enter_function_call acc type_args args in
     v.exit_function_call (expression_visit_helper v acc' func)
   | NamelessInstantiation ni -> v.visit_nameless_instantiation ni
   | Mask {expr; mask} ->
@@ -1358,6 +1363,78 @@ type ('a, 'b) declaration_visitor = {
       params: Parameter.t list } -> 'b;
 }
 
+let rec declaration_visit_helper v acc = function
+  | Constant c -> v.visit_constant acc c
+  | Instantiation i -> v.visit_instantiation acc i
+  | Parser _ -> failwith "TODO"
+  | Control _ -> failwith "TODO"
+  | Function f -> v.visit_function acc f
+  | ExternFunction ef -> v.visit_extern_function acc ef
+  | Variable v -> v.visit_variable acc v
+  | ValueSet vs -> v.visit_value_set acc vs
+  | Action of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        params: Parameter.t list;
+        body: Block.t }
+  | Table of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        properties: Table.property list }
+  | Header of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        fields: field list }
+  | HeaderUnion of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        fields: field list }
+  | Struct of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        fields: field list }
+  | Error of
+      { members: P4String.t list }
+  | MatchKind of
+      { members: P4String.t list }
+  | Enum of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        members: P4String.t list }
+  | SerializableEnum of
+      { annotations: Annotation.t list;
+        typ: Type.t [@key "type"];
+        name: P4String.t;
+        members: (P4String.t * Expression.t) list }
+  | ExternObject of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        type_params: P4String.t list;
+        methods: MethodPrototype.t list }
+  | TypeDef of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        typ_or_decl: (Type.t, t) alternative }
+  | NewType of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        typ_or_decl: (Type.t, t) alternative }
+  | ControlType of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        type_params: P4String.t list;
+        params: Parameter.t list }
+  | ParserType of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        type_params: P4String.t list;
+        params: Parameter.t list }
+  | PackageType of
+      { annotations: Annotation.t list;
+        name: P4String.t;
+        type_params: P4String.t list;
+        params: Parameter.t list }
+
 (*
 TODO Left 'a and Right 'b are the alternative constructors
 
@@ -1415,6 +1492,11 @@ let rec statement_visit_helper v acc = function
   | Switch s -> v.visit_switch acc s
   | DeclarationStatement ds -> v.visit_declaration_statement acc ds
 
-(* TODO Block not recursive *)
+(*
+TODO Block not recursive
+Blocks contain annotations and statements
+Declarations and statements contain blocks
+Annotations contain expressions and Key Values
+*)
 
 (* TODO Program not recursive *)
