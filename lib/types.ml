@@ -999,3 +999,114 @@ and Block : sig
 type program =
     Program of Declaration.t list [@name "program"]
 [@@deriving sexp,yojson]
+
+(*
+TODO New plan for a visitor structure
+This unifies the visitors for all of the different AST types
+The goal is to avoid problems caused by mutual recursion
+*)
+
+type ('a, 'b) annotation_visitor = {
+  visit_empty: 'a -> 'b;
+  visit_unparsed: 'a -> P4String.t list -> 'b;
+  visit_expression_nil: 'a -> 'b;
+  enter_expression_cons: 'a -> ('a * 'a);
+  exit_expression_cons: 'b -> 'b -> 'b;
+  visit_key_value_nil: 'a -> 'b;
+  enter_key_value_cons: 'a -> ('a * 'a);
+  exit_key_value_cons: 'b -> 'b -> 'b;
+}
+
+type ('a, 'b) parameter_visitor = {
+  (* function to use depends on length of annotation list *)
+  enter_nil: 'a -> P4String.t -> ('a * 'a * 'a);
+  exit_nil: 'b option -> 'b -> 'b option -> 'b;
+  enter_cons: 'a -> ('a * 'a);
+  exit_cons: 'b -> 'b -> 'b;
+}
+
+type ('a, 'b) type_visitor = {
+  visit_bool: 'a -> 'b;
+  visit_error: 'a -> 'b;
+  visit_integer: 'a -> 'b;
+  visit_int_type: 'a -> Expression.t -> 'b;
+  visit_bit_type: 'a -> Expression.t -> 'b;
+  visit_var_bit: 'a -> Expression.t -> 'b;
+  visit_top_level_type: 'a -> P4String.t -> 'b;
+  visit_type_name: 'a -> P4String.t -> 'b;
+  (* the recursion is for base *)
+  enter_specialized_type_nil: 'a -> 'a;
+  exit_specialized_type_nil: 'b -> 'b;
+  (* left for head of args, right for tail *)
+  enter_specialized_type_cons: 'a -> ('a * 'a);
+  exit_specialized_type_cons: 'b -> 'b -> 'b;
+  (* left for Type.t, right for Expression.t *)
+  enter_header_stack: 'a -> ('a * 'a);
+  exit_header_stack: 'b -> 'b -> 'b;
+  visit_tuple_nil: 'a -> 'b;
+  enter_tuple_cons: 'a -> ('a * 'a);
+  exit_tuple_cons: 'b -> 'b -> 'b;
+  visit_string: 'a -> 'b;
+  visit_void: 'a -> 'b;
+  visit_dont_care: 'a -> 'b;
+}
+
+type ('a, 'b) full_visitor = {
+  v_annotation: ('a, 'b) annotation_visitor;
+  v_parameter: ('a, 'b) parameter_visitor;
+  (* TODO Op? *)
+  v_type: ('a, 'b) type_visitor;
+  v_method_prototype: ('a, 'b) method_prototype_visitor;
+  v_argument: ('a, 'b) argument_visitor;
+  (* TODO Direction? *)
+  (*v_direction: ('a, 'b) direction_visitor;*)
+  v_expression: ('a, 'b) expression_visitor;
+  v_table: ('a, 'b) table_visitor;
+  v_match: ('a, 'b) match_visitor;
+  v_parser: ('a, 'b) parser_visitor;
+  v_declaration: ('a, 'b) declaration_visitor;
+  v_statement: ('a, 'b) statement_visitor;
+  v_block: ('a, 'b) block_visitor;
+  v_program: ('a, 'b) program_visitor;
+}
+
+type ('a, 'b) unified_visitor = {
+  (* Annotation *)
+  (* Parameter *)
+  (* Op *)
+  (* Type *)
+  type_visit_bool: 'a -> 'b;
+  type_visit_error: 'a -> 'b;
+  type_visit_integer: 'a -> 'b;
+  type_visit_int_type: 'a -> Expression.t -> 'b;
+  type_visit_bit_type: 'a -> Expression.t -> 'b;
+  type_visit_var_bit: 'a -> Expression.t -> 'b;
+  type_visit_top_level_type: 'a -> P4String.t -> 'b;
+  type_visit_type_name: 'a -> P4String.t -> 'b;
+  (* the recursion is for base *)
+  type_enter_specialized_type_nil: 'a -> 'a;
+  type_exit_specialized_type_nil: 'b -> 'b;
+  (* left for head of args, right for tail *)
+  type_enter_specialized_type_cons: 'a -> ('a * 'a);
+  type_exit_specialized_type_cons: 'b -> 'b -> 'b;
+  (* left for Type.t, right for Expression.t *)
+  type_enter_header_stack: 'a -> ('a * 'a);
+  type_exit_header_stack: 'b -> 'b -> 'b;
+  type_visit_tuple_nil: 'a -> 'b;
+  type_enter_tuple_cons: 'a -> ('a * 'a);
+  type_exit_tuple_cons: 'b -> 'b -> 'b;
+  type_visit_string: 'a -> 'b;
+  type_visit_void: 'a -> 'b;
+  type_visit_dont_care: 'a -> 'b;
+  (* MethodPrototype *)
+  (* Argument *)
+  (* Direction *)
+  (* Expression *)
+  (* Table *)
+  (* Match *)
+  (* Parser *)
+  (* Declaration *)
+  (* Statement *)
+  (* Block *)
+  (* Program *)
+}
