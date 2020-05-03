@@ -1051,6 +1051,31 @@ type ('a, 'b) type_visitor = {
   visit_dont_care: 'a -> 'b;
 }
 
+type ('a, 'b) method_prototype_visitor = unit
+
+type ('a, 'b) argument_visitor = {
+  enter_expression: 'a -> 'a;
+  exit_expression: 'b -> 'b;
+  enter_key_value: 'a -> P4String.t -> 'a;
+  exit_key_value: 'b -> 'b;
+  visit_missing: 'a -> 'b;
+}
+
+type ('a, 'b) expression_visitor = unit
+
+type ('a, 'b) table_visitor = unit
+
+type ('a, 'b) match_visitor = {
+  visit_default: 'a -> 'b;
+  visit_dont_care: 'a -> 'b;
+  enter_expression: 'a -> 'a;
+  exit_expression: 'a -> 'b;
+}
+
+type ('a, 'b) parser_visitor = unit
+
+type ('a, 'b) declaration_visitor = unit
+
 type ('a, 'b) full_visitor = {
   v_annotation: ('a, 'b) annotation_visitor;
   v_parameter: ('a, 'b) parameter_visitor;
