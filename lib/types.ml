@@ -1552,6 +1552,39 @@ let type_depth_visitor =
 let type_depth =
   type_visit_helper type_depth_visitor 0
 
+let type_depth_bottom_up_visitor =
+  let base = (fun _ -> 0) in
+  let base_ignore_term = (fun _ _ -> 0) in
+  let up1 = (fun n -> 1 + n) in
+  let down1 = (fun _ -> ()) in
+  let down1_ignore_term = (fun _ _ -> ()) in
+  let down2 = (fun _ -> ((), ())) in
+  let up2 = (fun n m -> 1 + max n m) in {
+  visit_bool = base;
+  visit_error = base;
+  visit_integer = base;
+  visit_int_type = base_ignore_term;
+  visit_bit_type = base_ignore_term;
+  visit_var_bit = base_ignore_term;
+  visit_top_level_type = base_ignore_term;
+  visit_type_name = base_ignore_term;
+  enter_specialized_type_nil = down1;
+  exit_specialized_type_nil = up1;
+  enter_specialized_type_cons = down2;
+  exit_specialized_type_cons = up2;
+  enter_header_stack = down1_ignore_term;
+  exit_header_stack = up1;
+  visit_tuple_nil = base;
+  enter_tuple_cons = down2;
+  exit_tuple_cons = up2;
+  visit_string = base;
+  visit_void = base;
+  visit_dont_care = base;
+}
+
+let type_depth_bottom_up =
+  type_visit_helper type_depth_bottom_up_visitor ()
+
 (**
   This visitor determines the number of nodes in a Statement.t.  It ignores
   all other Petr4 AST types.
@@ -1559,7 +1592,7 @@ let type_depth =
 let statement_count_visitor =
   let base = (fun _ -> 1) in
   let base_ignore_term = (fun _ _ -> 1) in
-  let split = (fun _ -> (0, 0)) -> in {
+  let split = (fun _ -> ((), ())) -> in {
   visit_method_call = base_ignore_term;
   visit_assignment = base_ignore_term;
   visit_direct_application = base_ignore_term;
@@ -1578,4 +1611,4 @@ let statement_count_visitor =
 }
 
 let statement_count =
-  statement_visit_helper statement_count_visitor 0
+  statement_visit_helper statement_count_visitor ()
