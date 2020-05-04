@@ -1019,6 +1019,19 @@ However, they are not directly recursive
 TODO Parameter
 *)
 
+type ('a, 'b) parameter_visitor = {
+  visit_parameter:
+    'a ->
+    { annotations: Annotation.t list;
+      direction: Direction.t option;
+      typ: Type.t;
+      variable: P4String.t;
+      opt_value: Expression.t option} -> 'b;
+}
+
+let parameter_visit_helper v =
+  v.visit_parameter
+
 (*
 TODO Op looks simple enough not to need anything special
 *)
@@ -1500,3 +1513,69 @@ Annotations contain expressions and Key Values
 *)
 
 (* TODO Program not recursive *)
+
+(* Example uses of the visitor structures *)
+
+(**
+  This visitor determines the depth of a Type.t.  It does not take the
+  mutual recursion of Petr4 AST types into account:  it treats any
+  Expression.t or P4String.t within the Type.t as having no depth.
+ *)
+let type_depth_visitor =
+  let base = (fun n -> n) in
+  let base_ignore_term = (fun n _ -> n) in
+  let incr = (fun n -> n + 1) in
+  let incr_ignore_term = (fun n _ -> n + 1) in
+  let split = (fun n -> (n + 1, n + 1)) in {
+  visit_bool = base;
+  visit_error = base;
+  visit_integer = base;
+  visit_int_type = base_ignore_term;
+  visit_bit_type = base_ignore_term;
+  visit_var_bit = base_ignore_term;
+  visit_top_level_type = base_ignore_term;
+  visit_type_name = base_ignore_term;
+  enter_specialized_type_nil = incr;
+  exit_specialized_type_nil = base;
+  enter_specialized_type_cons = split;
+  exit_specialized_type_cons = max;
+  enter_header_stack = incr_ignore_term;
+  exit_header_stack = base;
+  visit_tuple_nil = base;
+  enter_tuple_cons = split;
+  exit_tuple_cons = max;
+  visit_string = base;
+  visit_void = base;
+  visit_dont_care = base;
+}
+
+let type_depth =
+  type_visit_helper type_depth_visitor 0
+
+(**
+  This visitor determines the number of nodes in a Statement.t.  It ignores
+  all other Petr4 AST types.
+*)
+let statement_count_visitor =
+  let base = (fun _ -> 1) in
+  let base_ignore_term = (fun _ _ -> 1) in
+  let split = (fun _ -> (0, 0)) -> in {
+  visit_method_call = base_ignore_term;
+  visit_assignment = base_ignore_term;
+  visit_direct_application = base_ignore_term;
+  enter_conditional = split;
+  exit_conditional =
+    (fun n1 n2 ->
+    match n2 with
+    | None -> n1 + 1
+    | Some n2' -> n1 + n2' + 1)
+  visit_block_statement = base_ignore_term;
+  visit_exit = base;
+  visit_empty_statement = base;
+  visit_return = base_ignore_term;
+  visit_switch = base_ignore_term;
+  visit_declaration_statement = base_ignore_term;
+}
+
+let statement_count =
+  statement_visit_helper statement_count_visitor 0
