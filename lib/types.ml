@@ -1005,10 +1005,6 @@ type program =
 A program is a list of declarations
 *)
 
-type ('a, 'b) program_visitor = {
-  visit_program: 'a -> Declaration.t list -> 'b;
-}
-
 (*
 TODO Annotation
 They can contain arguments, which can contain expressions
@@ -1066,7 +1062,8 @@ type ('a, 'b) type_visitor = {
   visit_dont_care: 'a -> 'b;
 }
 
-let rec type_visit_helper v acc = function
+let rec type_visit_helper v acc t_info =
+  match snd t_info with
   | Bool -> v.visit_bool acc
   | Error -> v.visit_error acc
   | Integer -> v.visit_integer acc
@@ -1166,7 +1163,8 @@ type ('a, 'b) expression_visitor = {
   exit_range: 'b -> 'b -> 'b;
 }
 
-let rec expression_visit_helper v acc = function
+let rec expression_visit_helper v acc e_info =
+  match snd e_info with
   | True -> v.visit_true acc
   | False -> v.visit_false acc
   | Int i -> v.visit_int acc i
@@ -1376,7 +1374,8 @@ type ('a, 'b) declaration_visitor = {
       params: Parameter.t list } -> 'b;
 }
 
-let rec declaration_visit_helper v acc = function
+let rec declaration_visit_helper v acc d_info =
+  match snd d_info with
   | Constant c -> v.visit_constant acc c
   | Instantiation i -> v.visit_instantiation acc i
   | Parser _ -> failwith "TODO"
@@ -1485,7 +1484,8 @@ type ('a, 'b) statement_visitor = {
   visit_declaration_statement: 'a -> { decl: Declaration.t } -> 'b;
 }
 
-let rec statement_visit_helper v acc = function
+let rec statement_visit_helper v acc s_info =
+  match snd s_info with
   | MethodCall mc -> v.visit_method_call acc mc
   | Assignment a -> v.visit_assignment acc a
   | DirectApplication da -> v.visit_direct_application acc da
@@ -1513,6 +1513,20 @@ Annotations contain expressions and Key Values
 *)
 
 (* TODO Program not recursive *)
+
+type ('a, 'b) program_visitor = {
+  visit_program_nil: 'a -> 'b;
+  enter_program_cons: 'a -> ('a * 'a);
+  exit_program_cons: 'b -> 'b -> 'b;
+}
+
+(**
+  The Program type does not contain info.
+*)
+let rec program_visit_helper v acc = function
+  | Program [] -> v.visit_program_nil acc
+  | Program (h :: t) -> let (acc_h, acc_t) = v.enter_program_cons acc in
+    v.exit_program_cons () () (* TODO *)
 
 (* Example uses of the visitor structures *)
 
@@ -1612,3 +1626,75 @@ let statement_count_visitor =
 
 let statement_count =
   statement_visit_helper statement_count_visitor ()
+
+(**
+  This is the start of a group of visitors for collecting all of the headers
+  used in a program.
+  Currently, this visitor ignores mutual recursion.
+  Declarations, Statements, and Blocks are mutually recursive.
+  A Parser can contain a Statement, and a Parser can be contained in a
+  Declaration.
+  A Statement can be contained in either a Block or a Parser.
+  A Block can be contained in a Statement or a Declaration.
+  A Declaration can be contained in a Program or a Statement.
+  A Parser can be contained in a Declaration.
+  A Program cannot be contained in anything.
+*)
+let declaration_headers_visitor =
+  let get_header_name = (fun h -> [name h]) in
+  let base_ignore = (fun _ _ -> []) in
+  let enter_one = (fun _ -> ()) in
+  let exit_one = (fun l -> l) in {
+  visit_constant = base_ignore;
+  (* This one can contain a Block *)
+  visit_instantiation = failwith "TODO";
+  (* TODO implementation not decided *)
+  visit_parser_nil: 'a -> 'b;
+  enter_parser_cons: 'a -> ('a * 'a);
+  exit_parser_cons: 'b -> 'b -> 'b;
+  visit_control_nil: 'a -> 'b;
+  enter_control_cons: 'a -> ('a * 'a);
+  exit_control_cons: 'b -> 'b -> 'b;
+  (* TODO can contain a Block *)
+  visit_function = failwith "TODO";
+  visit_extern_function = base_ignore;
+  visit_variable = base_ignore;
+  visit_value_set:
+    'a ->
+    { annotations: Annotation.t list;
+          typ: Type.t [@key "type"];
+          size: Expression.t;
+          name: P4String.t } -> 'b;
+  visit_action:
+    'a ->
+    { annotations: Annotation.t list;
+          name: P4String.t;
+          params: Parameter.t list;
+          body: Block.t } -> 'b;
+  visit_table:
+    'a ->
+    { annotations: Annotation.t list;
+      name: P4String.t;
+      properties: Table.property list } -> 'b:
+  visit_header = get_header_name;
+  visit_header_union = get_header_name;
+  (* TODO fields are probably irrelevant *)
+  visit_struct = base_ignore;
+  visit_error = base_ignore;
+  visit_match_kind = base_ignore;
+  visit_enum = base_ignore;
+  visit_serializable_enum = base_ignore;
+  visit_extern_object = base_ignore;
+  (* TODO these next two groups of cases ignore side information *)
+  visit_type_def_type = base_ignore;
+  enter_type_def_decl = enter_one;
+  exit_type_def_decl = exit_one;
+  visit_new_type_type = base_ignore;
+  enter_new_type_decl = enter_one;
+  exit_new_type_decl = exit_one;
+  visit_control_type = base_ignore;
+  visit_parser_type = base_ignore;
+  visit_package_type = base_ignore;
+}
+
+(* TODO need to match on second entry because of info *)
