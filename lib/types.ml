@@ -1368,88 +1368,78 @@ type ('a, 'b) declaration_visitor = {
     P4String.t list -> Parameter.t list -> 'b;
 }
 
-(* TODO commenting out for now *)
-(*
 let rec declaration_visit_helper v acc d_info =
   match snd d_info with
-  | Constant c -> v.visit_constant acc c
-  | Instantiation i -> v.visit_instantiation acc i
-  | Parser _ -> failwith "TODO"
-  | Control _ -> failwith "TODO"
-  | Function f -> v.visit_function acc f
-  | ExternFunction ef -> v.visit_extern_function acc ef
-  | Variable v -> v.visit_variable acc v
-  | ValueSet vs -> v.visit_value_set acc vs
-  | Action of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        params: Parameter.t list;
-        body: Block.t }
-  | Table of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        properties: Table.property list }
-  | Header of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        fields: field list }
-  | HeaderUnion of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        fields: field list }
-  | Struct of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        fields: field list }
-  | Error of
-      { members: P4String.t list }
-  | MatchKind of
-      { members: P4String.t list }
-  | Enum of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        members: P4String.t list }
-  | SerializableEnum of
-      { annotations: Annotation.t list;
-        typ: Type.t [@key "type"];
-        name: P4String.t;
-        members: (P4String.t * Expression.t) list }
-  | ExternObject of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        type_params: P4String.t list;
-        methods: MethodPrototype.t list }
-  | TypeDef of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        typ_or_decl: (Type.t, t) alternative }
-  | NewType of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        typ_or_decl: (Type.t, t) alternative }
-  | ControlType of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        type_params: P4String.t list;
-        params: Parameter.t list }
-  | ParserType of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        type_params: P4String.t list;
-        params: Parameter.t list }
-  | PackageType of
-      { annotations: Annotation.t list;
-        name: P4String.t;
-        type_params: P4String.t list;
-        params: Parameter.t list }
-*)
-
-(*
-TODO Left 'a and Right 'b are the alternative constructors
-
-What does the "info" mean?
-Also, why the "pre" distinction?
-*)
+  | Constant {annotations; typ; name; value} ->
+    v.visit_constant acc annotations typ name value
+  | Instantiation {annotations; typ; args; name; init} ->
+    v.visit_instantiation acc annotations typ args name init
+  | Parser {annotations; name; type_params;
+    params; constructor_params; locals; states} ->
+    begin match locals with
+      | [] -> v.visit_parser_nil acc annotations name
+        type_params params constructor_params states
+      | h :: t -> let (acc_h, acc_t) = v.enter_parser_cons acc in
+        v.exit_parser_cons (declaration_visit_helper v acc_h h)
+                           (declaration_visit_helper v acc_t t)
+    end
+  | Control {annotations; name; type_params;
+    params; constructor_params; locals; apply} ->
+    begin match locals with
+      | [] -> v.visit_control_nil acc annotations name
+        type_params params constructor_params apply
+      | h :: t -> let (acc_h, acc_t) = v.enter_control_cons acc in
+        v.exit_control_cons (declaration_visit_helper v acc_h h)
+                            (declaration_visit_helper v acc_t t)
+    end
+  | Function {return; name; type_params; params; body} ->
+    v.visit_function acc return name type_params params body
+  | ExternFunction {annotations; return; name; type_params; params} ->
+    v.visit_extern_function acc annotations return name type_params params
+  | Variable {annotations; typ; name; init} ->
+    v.visit_variable acc annotations typ name init
+  | ValueSet {annotations; typ; size; name} ->
+    v.visit_value_set acc annotations typ size name
+  | Action {annotations; name; params; body} ->
+    v.visit_action acc annotations name params body
+  | Table {annotations; name; properties} ->
+    v.visit_table acc annotations name properties
+  | Header {annotations; name; fields} ->
+    v.visit_header annotations name fields
+  | HeaderUnion {annotations; name; fields} ->
+    v.visit_header_union annotations name fields
+  | Struct {annotations; name; fields} ->
+    v.visit_struct annotations name fields
+  | Error {members} -> v.visit_error acc members
+  | MatchKind {members} -> v.visit_match_kind acc members
+  | Enum {annotations; name; members} ->
+    v.visit_enum acc annotations name members
+  | SerializableEnum {annotations; typ; name; members} ->
+    v.visit_serializable_enum acc annotations typ name members
+  | ExternObject {annotations; name; type_params; methods} ->
+    v.visit_extern_object acc annotations name type_params methods
+  | TypeDef {annotations; name; typ_or_decl} ->
+    begin match typ_or_decl with
+      | Left typ -> v.visit_type_def_type acc annotations name typ
+      | Right decl ->
+        let acc' = v.enter_type_def_decl acc annotations name in
+        let out' = declaration_visit_helper v acc' decl in
+        v.exit_type_def_decl out'
+    end
+  | NewType {annotations; name; typ_or_decl} ->
+    begin match typ_or_decl with
+      | Left typ -> v.visit_new_type_type acc annotations name typ
+      | Right decl ->
+        let acc' = v.enter_new_type_decl acc annotations name in
+        let out' = declaration_visit_helper v acc' decl in
+        v.exit_new_type_decl out'
+    end
+  | ControlType { annotations; name; type_params; params} ->
+    v.visit_control_type acc annotations name type_params params
+  | ParserType { annotations; name; type_params; params} ->
+    v.visit_parser_type acc annotations name type_params params
+  | PackageType { annotations; name; type_params; params} ->
+    v.visit_package_type acc annotations name type_params params
 
 (* TODO Statement is recursive *)
 (* TODO more record syntax adjusting *)
