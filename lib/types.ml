@@ -1065,6 +1065,7 @@ type ('a, 'b) type_visitor = {
   visit_dont_care: 'a -> 'b;
 }
 
+(*
 let rec type_visit_helper v acc t_info =
   match snd t_info with
   | Bool -> v.visit_bool acc
@@ -1095,6 +1096,7 @@ let rec type_visit_helper v acc t_info =
   | String -> v.visit_string acc
   | Void -> v.visit_void acc
   | DontCare -> v.visit_dont_care acc
+*)
 
 (*
 TODO MethodPrototype
@@ -1181,6 +1183,7 @@ type ('a, 'b) expression_visitor = {
 }
 
 (* TODO does the syntax here need to be adjusted for records? *)
+(*
 let rec expression_visit_helper v acc e_info =
   match snd e_info with
   | True -> v.visit_true acc
@@ -1237,6 +1240,7 @@ let rec expression_visit_helper v acc e_info =
     let (acc_lo, acc_hi) = v.enter_range acc in
     v.exit_range (expression_visit_helper v acc_lo lo)
                  (expression_visit_helper v acc_hi hi)
+*)
 
 (*
 TODO Table not recursive
@@ -1368,6 +1372,7 @@ type ('a, 'b) declaration_visitor = {
     P4String.t list -> Parameter.t list -> 'b;
 }
 
+(*
 let rec declaration_visit_helper v acc d_info =
   match snd d_info with
   | Constant {annotations; typ; name; value} ->
@@ -1440,6 +1445,7 @@ let rec declaration_visit_helper v acc d_info =
     v.visit_parser_type acc annotations name type_params params
   | PackageType { annotations; name; type_params; params} ->
     v.visit_package_type acc annotations name type_params params
+*)
 
 (* TODO Statement is recursive *)
 (* TODO more record syntax adjusting *)
@@ -1480,6 +1486,7 @@ type ('a, 'b) statement_visitor = {
 }
 
 (* TODO adjusted record syntax here too *)
+(*
 let rec statement_visit_helper v acc s_info =
   match snd s_info with
   (* | MethodCall mc -> v.visit_method_call acc mc
@@ -1508,6 +1515,7 @@ let rec statement_visit_helper v acc s_info =
   | Return {expr} -> v.visit_return acc expr
   | Switch {expr; cases} -> v.visit_switch acc expr cases
   | DeclarationStatement {decl} -> v.visit_declaration_statement acc decl
+*)
 
 (*
 TODO Block not recursive
