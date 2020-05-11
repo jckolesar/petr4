@@ -1621,6 +1621,7 @@ let type_depth_bottom_up =
   This visitor determines the number of nodes in a Statement.t.  It ignores
   all other Petr4 AST types.
 *)
+(*
 let statement_count_visitor =
   let base = (fun _ -> 1) in
   let base_ignore_term = (fun _ _ -> 1) in
@@ -1641,6 +1642,7 @@ let statement_count_visitor =
   visit_switch = base_ignore_term;
   visit_declaration_statement = base_ignore_term;
 }
+*)
 
 (*
 let statement_count =
