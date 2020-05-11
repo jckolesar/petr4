@@ -1005,6 +1005,13 @@ type program =
 A program is a list of declarations
 *)
 
+(* TODO try opening the modules first *)
+open Type
+open Argument
+open Expression
+open Declaration
+open Statement
+
 (*
 TODO Annotation
 They can contain arguments, which can contain expressions
@@ -1065,8 +1072,8 @@ type ('a, 'b) type_visitor = {
   visit_dont_care: 'a -> 'b;
 }
 
-(*
 let rec type_visit_helper v acc t_info =
+  let dummy_info = fst t_info in
   match snd t_info with
   | Bool -> v.visit_bool acc
   | Error -> v.visit_error acc
@@ -1080,9 +1087,10 @@ let rec type_visit_helper v acc t_info =
     | [] -> let acc' = v.enter_specialized_type_nil acc in
       v.exit_specialized_type_nil (type_visit_helper v acc' base)
     | h :: t -> let (acc_h, acc_t) = v.enter_specialized_type_cons acc in
-      v.exit_specialized_type_cons (type_visit_helper v acc_h h)
-                                   (type_visit_helper v acc_t
-                                   (SpecializedType {base = base; args = t}))
+      v.exit_specialized_type_cons
+        (type_visit_helper v acc_h h)
+        (type_visit_helper v acc_t
+          (dummy_info, SpecializedType {base = base; args = t}))
     end
   | HeaderStack {header; size} ->
     let acc' = v.enter_header_stack acc size in
@@ -1091,12 +1099,11 @@ let rec type_visit_helper v acc t_info =
     | [] -> v.visit_tuple_nil acc
     | h :: t -> let (acc_h, acc_t) = v.enter_tuple_cons acc in
       v.exit_tuple_cons (type_visit_helper v acc_h h)
-                        (type_visit_helper acc_t (Tuple t))
+                        (type_visit_helper v acc_t (dummy_info, Tuple t))
     end
   | String -> v.visit_string acc
   | Void -> v.visit_void acc
   | DontCare -> v.visit_dont_care acc
-*)
 
 (*
 TODO MethodPrototype
@@ -1125,10 +1132,15 @@ type ('a, 'b) argument_visitor = {
 (* TODO attempt to fix syntax *)
 type ('a, 'b) argument_visitor = {
   visit_expression: 'a -> Expression.t -> 'b;
-  visit_key_value: 'a -> Expression.t -> 'b;
+  visit_key_value: 'a -> P4String.t -> Expression.t -> 'b;
   visit_missing: 'a -> 'b;
 }
 
+let argument_visit_helper v acc a_info =
+  match snd a_info with
+  | Expression {value} -> v.visit_expression acc value
+  | KeyValue {key; value} -> v.visit_key_value acc key value
+  | Missing -> v.visit_missing acc
 
 (*
 TODO Direction looks simple
@@ -1183,8 +1195,8 @@ type ('a, 'b) expression_visitor = {
 }
 
 (* TODO does the syntax here need to be adjusted for records? *)
-(*
 let rec expression_visit_helper v acc e_info =
+  let dummy_info = fst e_info in
   match snd e_info with
   | True -> v.visit_true acc
   | False -> v.visit_false acc
@@ -1204,10 +1216,11 @@ let rec expression_visit_helper v acc e_info =
   | List {values} -> begin match values with
     | [] -> v.visit_list_nil acc
     | h :: t -> let (acc_h, acc_t) = v.enter_list_cons acc in
-      v.exit_list_cons (expression_visit_helper v acc_h h)
-                       (expression_visit_helper v acc_t (List {values = t}))
+      v.exit_list_cons
+        (expression_visit_helper v acc_h h)
+        (expression_visit_helper v acc_t (dummy_info, List {values = t}))
       end
-  | Record r -> v.visit_record acc r
+  | Record {entries} -> v.visit_record acc entries
   | UnaryOp {op; arg} ->
     let acc' = v.enter_unary_op acc op in
     v.exit_unary_op (expression_visit_helper v acc' arg)
@@ -1218,7 +1231,7 @@ let rec expression_visit_helper v acc e_info =
   | Cast {typ; expr} ->
     let acc' = v.enter_cast acc typ in
     v.exit_cast (expression_visit_helper v acc' expr)
-  | TypeMember tm -> v.visit_type_member acc tm
+  | TypeMember {typ; name} -> v.visit_type_member acc typ name
   | ErrorMember s -> v.visit_error_member acc s
   | ExpressionMember {expr; name} ->
     let acc' = v.enter_expression_member acc name in
@@ -1231,7 +1244,8 @@ let rec expression_visit_helper v acc e_info =
   | FunctionCall {func; type_args; args} ->
     let acc' = v.enter_function_call acc type_args args in
     v.exit_function_call (expression_visit_helper v acc' func)
-  | NamelessInstantiation ni -> v.visit_nameless_instantiation ni
+  | NamelessInstantiation {typ; args} ->
+    v.visit_nameless_instantiation acc typ args
   | Mask {expr; mask} ->
     let (acc_expr, acc_mask) = v.enter_mask acc in
     v.exit_mask (expression_visit_helper v acc_expr expr)
@@ -1240,7 +1254,6 @@ let rec expression_visit_helper v acc e_info =
     let (acc_lo, acc_hi) = v.enter_range acc in
     v.exit_range (expression_visit_helper v acc_lo lo)
                  (expression_visit_helper v acc_hi hi)
-*)
 
 (*
 TODO Table not recursive
@@ -1372,8 +1385,8 @@ type ('a, 'b) declaration_visitor = {
     P4String.t list -> Parameter.t list -> 'b;
 }
 
-(*
 let rec declaration_visit_helper v acc d_info =
+  let dummy_info = fst d_info in
   match snd d_info with
   | Constant {annotations; typ; name; value} ->
     v.visit_constant acc annotations typ name value
@@ -1385,8 +1398,18 @@ let rec declaration_visit_helper v acc d_info =
       | [] -> v.visit_parser_nil acc annotations name
         type_params params constructor_params states
       | h :: t -> let (acc_h, acc_t) = v.enter_parser_cons acc in
-        v.exit_parser_cons (declaration_visit_helper v acc_h h)
-                           (declaration_visit_helper v acc_t t)
+        v.exit_parser_cons
+          (declaration_visit_helper v acc_h h)
+          (declaration_visit_helper v acc_t
+            (dummy_info, Parser {
+              annotations = annotations;
+              name = name;
+              type_params = type_params;
+              params = params;
+              constructor_params = constructor_params;
+              locals = t;
+              states = states;
+            }))
     end
   | Control {annotations; name; type_params;
     params; constructor_params; locals; apply} ->
@@ -1394,8 +1417,18 @@ let rec declaration_visit_helper v acc d_info =
       | [] -> v.visit_control_nil acc annotations name
         type_params params constructor_params apply
       | h :: t -> let (acc_h, acc_t) = v.enter_control_cons acc in
-        v.exit_control_cons (declaration_visit_helper v acc_h h)
-                            (declaration_visit_helper v acc_t t)
+        v.exit_control_cons
+          (declaration_visit_helper v acc_h h)
+          (declaration_visit_helper v acc_t
+          (dummy_info, Control {
+            annotations = annotations;
+            name = name;
+            type_params = type_params;
+            params = params;
+            constructor_params = constructor_params;
+            locals = t;
+            apply = apply;
+          }))
     end
   | Function {return; name; type_params; params; body} ->
     v.visit_function acc return name type_params params body
@@ -1410,11 +1443,11 @@ let rec declaration_visit_helper v acc d_info =
   | Table {annotations; name; properties} ->
     v.visit_table acc annotations name properties
   | Header {annotations; name; fields} ->
-    v.visit_header annotations name fields
+    v.visit_header acc annotations name fields
   | HeaderUnion {annotations; name; fields} ->
-    v.visit_header_union annotations name fields
+    v.visit_header_union acc annotations name fields
   | Struct {annotations; name; fields} ->
-    v.visit_struct annotations name fields
+    v.visit_struct acc annotations name fields
   | Error {members} -> v.visit_error acc members
   | MatchKind {members} -> v.visit_match_kind acc members
   | Enum {annotations; name; members} ->
@@ -1445,7 +1478,6 @@ let rec declaration_visit_helper v acc d_info =
     v.visit_parser_type acc annotations name type_params params
   | PackageType { annotations; name; type_params; params} ->
     v.visit_package_type acc annotations name type_params params
-*)
 
 (* TODO Statement is recursive *)
 (* TODO more record syntax adjusting *)
@@ -1486,7 +1518,6 @@ type ('a, 'b) statement_visitor = {
 }
 
 (* TODO adjusted record syntax here too *)
-(*
 let rec statement_visit_helper v acc s_info =
   match snd s_info with
   (* | MethodCall mc -> v.visit_method_call acc mc
@@ -1503,7 +1534,7 @@ let rec statement_visit_helper v acc s_info =
         (statement_visit_helper v acc_tru tru) None
       | Some fls_branch -> v.exit_conditional
         (statement_visit_helper v acc_tru tru)
-        (statement_visit_helper v acc_fls fls_branch)
+        (Some (statement_visit_helper v acc_fls fls_branch))
     end
   (* | BlockStatement bs -> v.visit_block_statement acc bs *)
   | BlockStatement {block} -> v.visit_block_statement acc block
@@ -1515,7 +1546,6 @@ let rec statement_visit_helper v acc s_info =
   | Return {expr} -> v.visit_return acc expr
   | Switch {expr; cases} -> v.visit_switch acc expr cases
   | DeclarationStatement {decl} -> v.visit_declaration_statement acc decl
-*)
 
 (*
 TODO Block not recursive
@@ -1528,6 +1558,7 @@ Annotations contain expressions and Key Values
 
 type ('a, 'b) program_visitor = {
   visit_program_nil: 'a -> 'b;
+  visit_single_declaration: 'a -> Declaration.t -> 'b;
   enter_program_cons: 'a -> ('a * 'a);
   exit_program_cons: 'b -> 'b -> 'b;
 }
@@ -1535,12 +1566,13 @@ type ('a, 'b) program_visitor = {
 (**
   The Program type does not contain info.
 *)
-(*
 let rec program_visit_helper v acc = function
   | Program [] -> v.visit_program_nil acc
-  | Program (h :: t) -> let (acc_h, acc_t) = v.enter_program_cons acc in
-    v.exit_program_cons () () (* TODO *)
-*)
+  | Program (h :: t) ->
+    let (acc_h, acc_t) = v.enter_program_cons acc in
+    let out_h = v.visit_single_declaration acc_h h in
+    let out_t = program_visit_helper v acc_t (Program t) in
+    v.exit_program_cons out_h out_t
 
 (* Example uses of the visitor structures *)
 
@@ -1577,10 +1609,8 @@ let type_depth_visitor =
   visit_dont_care = base;
 }
 
-(*
 let type_depth =
   type_visit_helper type_depth_visitor 0
-*)
 
 let type_depth_bottom_up_visitor =
   let base = (fun _ -> 0) in
@@ -1612,10 +1642,8 @@ let type_depth_bottom_up_visitor =
   visit_dont_care = base;
 }
 
-(*
 let type_depth_bottom_up =
   type_visit_helper type_depth_bottom_up_visitor ()
-*)
 
 (**
   This visitor determines the number of nodes in a Statement.t.  It ignores
@@ -1721,5 +1749,3 @@ let declaration_headers_visitor =
   visit_package_type = base_ignore;
 }
 *)
-
-(* TODO need to match on second entry because of info *)
