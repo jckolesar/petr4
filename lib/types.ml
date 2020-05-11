@@ -1535,10 +1535,12 @@ type ('a, 'b) program_visitor = {
 (**
   The Program type does not contain info.
 *)
+(*
 let rec program_visit_helper v acc = function
   | Program [] -> v.visit_program_nil acc
   | Program (h :: t) -> let (acc_h, acc_t) = v.enter_program_cons acc in
     v.exit_program_cons () () (* TODO *)
+*)
 
 (* Example uses of the visitor structures *)
 
@@ -1575,8 +1577,10 @@ let type_depth_visitor =
   visit_dont_care = base;
 }
 
+(*
 let type_depth =
   type_visit_helper type_depth_visitor 0
+*)
 
 let type_depth_bottom_up_visitor =
   let base = (fun _ -> 0) in
@@ -1608,8 +1612,10 @@ let type_depth_bottom_up_visitor =
   visit_dont_care = base;
 }
 
+(*
 let type_depth_bottom_up =
   type_visit_helper type_depth_bottom_up_visitor ()
+*)
 
 (**
   This visitor determines the number of nodes in a Statement.t.  It ignores
@@ -1636,8 +1642,10 @@ let statement_count_visitor =
   visit_declaration_statement = base_ignore_term;
 }
 
+(*
 let statement_count =
   statement_visit_helper statement_count_visitor ()
+*)
 
 (**
   This is the start of a group of visitors for collecting all of the headers
