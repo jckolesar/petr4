@@ -1649,33 +1649,32 @@ let type_depth_bottom_up =
   This visitor determines the number of nodes in a Statement.t.  It ignores
   all other Petr4 AST types.
 *)
-(*
 let statement_count_visitor =
-  let base = (fun _ -> 1) in
-  let base_ignore_term = (fun _ _ -> 1) in
-  let split = (fun _ -> ((), ())) in {
-  visit_method_call = base_ignore_term;
-  visit_assignment = base_ignore_term;
-  visit_direct_application = base_ignore_term;
+  let base1 = (fun _ -> 1) in
+  let base2 = (fun _ _ -> 1) in
+  let base3 = (fun _ _ _ -> 1) in
+  let base4 = (fun _ _ _ _ -> 1) in
+  let split = (fun _ _ -> ((), ())) in {
+  visit_method_call = base4;
+  visit_assignment = base3;
+  visit_direct_application = base3;
   enter_conditional = split;
   exit_conditional =
-    (fun n1 n2 ->
-    match n2 with
-    | None -> n1 + 1
-    | Some n2' -> n1 + n2' + 1)
-  visit_block_statement = base_ignore_term;
-  visit_exit = base;
-  visit_empty_statement = base;
-  visit_return = base_ignore_term;
-  visit_switch = base_ignore_term;
-  visit_declaration_statement = base_ignore_term;
+    begin fun n1 n2 ->
+      match n2 with
+      | None -> n1 + 1
+      | Some n2' -> n1 + n2' + 1
+    end;
+  visit_block_statement = base2;
+  visit_exit = base1;
+  visit_empty_statement = base1;
+  visit_return = base2;
+  visit_switch = base3;
+  visit_declaration_statement = base2;
 }
-*)
 
-(*
 let statement_count =
   statement_visit_helper statement_count_visitor ()
-*)
 
 (**
   This is the start of a group of visitors for collecting all of the headers
@@ -1690,62 +1689,52 @@ let statement_count =
   A Parser can be contained in a Declaration.
   A Program cannot be contained in anything.
 *)
-(* TODO commenting out for now *)
-(*
+(* TODO no mutual recursion for now *)
 let declaration_headers_visitor =
-  let get_header_name = (fun h -> [name h]) in
-  let base_ignore = (fun _ _ -> []) in
-  let enter_one = (fun _ -> ()) in
-  let exit_one = (fun l -> l) in {
-  visit_constant = base_ignore;
+  let get_header_name = (fun _ _ name _ -> [name]) in
+  let base2 = (fun _ _ -> []) in
+  let base4 = (fun _ _ _ _ -> []) in
+  let base5 = (fun _ _ _ _ _ -> []) in
+  let base6 = (fun _ _ _ _ _ _ -> []) in
+  let base7 = (fun _ _ _ _ _ _ _ -> []) in
+  let enter1_ignore = (fun _ _ _ -> ()) in
+  let enter2 = (fun _ -> ((), ())) in
+  let exit1 = (fun l -> l) in
+  let exit2 = (@) in {
+  visit_constant = base5;
   (* This one can contain a Block *)
-  visit_instantiation = failwith "TODO";
+  visit_instantiation = base6;
   (* TODO implementation not decided *)
-  visit_parser_nil: 'a -> 'b;
-  enter_parser_cons: 'a -> ('a * 'a);
-  exit_parser_cons: 'b -> 'b -> 'b;
-  visit_control_nil: 'a -> 'b;
-  enter_control_cons: 'a -> ('a * 'a);
-  exit_control_cons: 'b -> 'b -> 'b;
+  visit_parser_nil = base7;
+  enter_parser_cons = enter2;
+  exit_parser_cons = exit2;
+  visit_control_nil = base7;
+  enter_control_cons = enter2;
+  exit_control_cons = exit2;
   (* TODO can contain a Block *)
-  visit_function = failwith "TODO";
-  visit_extern_function = base_ignore;
-  visit_variable = base_ignore;
-  visit_value_set:
-    'a ->
-    { annotations: Annotation.t list;
-          typ: Type.t [@key "type"];
-          size: Expression.t;
-          name: P4String.t } -> 'b;
-  visit_action:
-    'a ->
-    { annotations: Annotation.t list;
-          name: P4String.t;
-          params: Parameter.t list;
-          body: Block.t } -> 'b;
-  visit_table:
-    'a ->
-    { annotations: Annotation.t list;
-      name: P4String.t;
-      properties: Table.property list } -> 'b:
+  visit_function = base6;
+  visit_extern_function = base6;
+  visit_variable = base5;
+  visit_value_set = base5;
+  visit_action = base5;
+  visit_table = base4;
   visit_header = get_header_name;
   visit_header_union = get_header_name;
   (* TODO fields are probably irrelevant *)
-  visit_struct = base_ignore;
-  visit_error = base_ignore;
-  visit_match_kind = base_ignore;
-  visit_enum = base_ignore;
-  visit_serializable_enum = base_ignore;
-  visit_extern_object = base_ignore;
+  visit_struct = base4;
+  visit_error = base2;
+  visit_match_kind = base2;
+  visit_enum = base4;
+  visit_serializable_enum = base5;
+  visit_extern_object = base5;
   (* TODO these next two groups of cases ignore side information *)
-  visit_type_def_type = base_ignore;
-  enter_type_def_decl = enter_one;
-  exit_type_def_decl = exit_one;
-  visit_new_type_type = base_ignore;
-  enter_new_type_decl = enter_one;
-  exit_new_type_decl = exit_one;
-  visit_control_type = base_ignore;
-  visit_parser_type = base_ignore;
-  visit_package_type = base_ignore;
+  visit_type_def_type = base4;
+  enter_type_def_decl = enter1_ignore;
+  exit_type_def_decl = exit1;
+  visit_new_type_type = base4;
+  enter_new_type_decl = enter1_ignore;
+  exit_new_type_decl = exit1;
+  visit_control_type = base5;
+  visit_parser_type = base5;
+  visit_package_type = base5;
 }
-*)
