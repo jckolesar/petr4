@@ -1,6 +1,3 @@
-(* TODO I need to adjust the visitors to work with the Prog AST rather than
-the Types AST *)
-
 open Types
 open Typed
 open Prog
@@ -14,30 +11,6 @@ open Statement
 TODO Annotation
 They can contain arguments, which can contain expressions
 However, they are not directly recursive
-*)
-
-(*
-TODO Parameter
-TODO The record syntax here is invalid
-*)
-
-(*
-type ('a, 'b) parameter_visitor = {
-  visit_parameter:
-    'a ->
-    { annotations: Annotation.t list;
-      direction: Direction.t option;
-      typ: Type.t;
-      variable: P4String.t;
-      opt_value: Expression.t option} -> 'b;
-}
-
-let parameter_visit_helper v =
-  v.visit_parameter
-*)
-
-(*
-TODO Op looks simple enough not to need anything special
 *)
 
 (*
@@ -117,41 +90,6 @@ Declarations can contain parsers
 This means that there's no cycle back to MethodPrototype
 *)
 
-(*
-TODO Argument
-Expressions can contain arguments
-Arguments can contain expressions, so there's a cycle
-*)
-
-(*
-type ('a, 'b) argument_visitor = {
-  visit_expression: 'a -> { value: Expression.t } -> 'b;
-  visit_key_value: 'a -> { value: Expression.t } -> 'b;
-  visit_missing: 'a -> 'b;
-}
-*)
-
-(* TODO attempt to fix syntax *)
-(*
-type ('a, 'b) argument_visitor = {
-  visit_expression: 'a -> Expression.t -> 'b;
-  visit_key_value: 'a -> P4String.t -> Expression.t -> 'b;
-  visit_missing: 'a -> 'b;
-}
-
-let argument_visit_helper v acc a_info =
-  match snd a_info with
-  | Expression {value} -> v.visit_expression acc value
-  | KeyValue {key; value} -> v.visit_key_value acc key value
-  | Missing -> v.visit_missing acc
-*)
-
-(*
-TODO Direction looks simple
-No containment of other types at all
-*)
-
-(* TODO adjusting for Prog AST *)
 type ('a, 'b) expression_visitor = {
   visit_true: 'a -> 'b;
   visit_false: 'a -> 'b;
@@ -161,15 +99,11 @@ type ('a, 'b) expression_visitor = {
   visit_top_level: 'a -> P4String.t -> 'b;
   enter_array_access: 'a -> ('a * 'a);
   exit_array_access: 'b -> 'b -> 'b;
-  (* enter_bit_string_access: 'a -> ('a * 'a * 'a);
-  exit_bit_string_access: 'b -> 'b -> 'b -> 'b; *)
   enter_bit_string_access: 'a -> Util.bigint -> Util.bigint -> 'a;
   exit_bit_string_access: 'b -> 'b;
   visit_list_nil: 'a -> 'b;
-  (* head input/output, then tail input/output *)
   enter_list_cons: 'a -> ('a * 'a);
   exit_list_cons: 'b -> 'b -> 'b;
-  (* visit_record: 'a -> { entries: KeyValue.t list } -> 'b; *)
   visit_record: 'a ->  KeyValue.t list -> 'b;
   enter_unary_op: 'a -> Op.uni -> 'a;
   exit_unary_op: 'b -> 'b;
@@ -177,20 +111,16 @@ type ('a, 'b) expression_visitor = {
   exit_binary_op: 'b -> 'b -> 'b;
   enter_cast: 'a -> Type.t -> 'a;
   exit_cast: 'b -> 'b;
-  (* visit_type_member: 'a -> { typ: Type.t; name: P4String.t } -> 'b; *)
   visit_type_member: 'a -> Type.t -> P4String.t -> 'b;
   visit_error_member: 'a -> P4String.t -> 'b;
   enter_expression_member: 'a -> P4String.t -> 'a;
   exit_expression_member: 'b -> 'b;
   enter_ternary: 'a -> ('a * 'a * 'a);
   exit_ternary: 'b -> 'b -> 'b -> 'b;
-  (* enter_function_call: 'a -> Type.t list -> Argument.t list -> 'a;
-  exit_function_call: 'b -> 'b; *)
   enter_function_call_nil: 'a -> Type.t list -> 'a;
   exit_function_call_nil: 'b -> 'b;
   enter_function_call_cons: 'a -> ('a * 'a);
   exit_function_call_cons: 'b option -> 'b -> 'b;
-  (* visit_nameless_instantiation: 'a -> Type.t -> Argument.t list -> 'b; *)
   visit_nameless_instantiation_nil: 'a -> Type.t -> 'b;
   enter_nameless_instantiation_cons: 'a -> ('a * 'a);
   exit_nameless_instantiation_cons: 'b -> 'b -> 'b;
@@ -201,7 +131,6 @@ type ('a, 'b) expression_visitor = {
   exit_range: 'b -> 'b -> 'b;
 }
 
-(* TODO adjust for Prog AST *)
 (* TODO Currently throws out type in typed_t *)
 let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
   let dummy_info = fst e_info in
@@ -273,8 +202,6 @@ let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
                 args = t;
               }}))
     end
-    (* let acc' = v.enter_function_call acc type_args args in
-    v.exit_function_call (expression_visit_helper v acc' func) *)
   | NamelessInstantiation {typ; args} ->
     begin match args with
       | [] -> v.visit_nameless_instantiation_nil acc typ
@@ -317,46 +244,12 @@ The side information for it is left out for now
 *)
 
 (* TODO Declaration is recursive *)
-(* TODO adjusting record syntax here *)
 type ('a, 'b) declaration_visitor = {
-  (* visit_constant:
-    'a ->
-    { annotations: Annotation.t list;
-      typ: Type.t [@key "type"];
-      name: P4String.t;
-      value: Expression.t } -> 'b;
-  visit_instantiation:
-    'a ->
-    { annotations: Annotation.t list;
-      typ: Type.t [@key "type"];
-      args: Argument.t list;
-      name: P4String.t;
-      init: Block.t option; } -> 'b; *)
   visit_constant:
     'a -> Annotation.t list -> Type.t -> P4String.t -> Value.value -> 'b;
   visit_instantiation:
     'a -> Annotation.t list -> Type.t -> Expression.t list ->
     P4String.t -> Block.t option -> 'b;
-  (* TODO How to enter a recursive list?
-  Could have enter nil and enter cons
-  Correspondingly, exit nil and exit cons
-  Is the representation here redundant?
-  *)
-  (*
-  enter_parser:
-    'a ->
-    { annotations: Annotation.t list;
-      name: P4String.t;
-      type_params: P4String.t list;
-      params: Parameter.t list;
-      constructor_params: Parameter.t list;
-      locals: t list;
-      states: Parser.state list } -> 'a list;
-  exit_parser: 'b list -> 'b;
-  *)
-  (* leaving out side information for now *)
-  (* visit_parser_nil: 'a -> 'b;
-  visit_control_nil: 'a -> 'b; *)
   (* TODO current implementation handles side info only in nil case *)
   visit_parser_nil:
     'a -> Annotation.t list -> P4String.t ->
@@ -410,13 +303,6 @@ type ('a, 'b) declaration_visitor = {
   visit_extern_object:
     'a -> Annotation.t list -> P4String.t ->
     P4String.t list -> MethodPrototype.t list -> 'b;
-  (* TODO these next two groups of cases ignore side information *)
-  (* visit_type_def_type: 'a -> Type.t -> 'b;
-  enter_type_def_decl: 'a -> 'a;
-  exit_type_def_decl: 'b -> 'b;
-  visit_new_type_type: 'a -> Type.t -> 'b;
-  enter_new_type_decl: 'a -> 'a;
-  exit_new_type_decl: 'b -> 'b; *)
   visit_type_def_type: 'a -> Annotation.t list -> P4String.t -> Type.t -> 'b;
   enter_type_def_decl: 'a -> Annotation.t list -> P4String.t -> 'a;
   exit_type_def_decl: 'b -> 'b;
@@ -530,22 +416,7 @@ let rec declaration_visit_helper v acc (d_info: Prog.Declaration.t) =
   | PackageType { annotations; name; type_params; params} ->
     v.visit_package_type acc annotations name type_params params
 
-(* TODO Statement is recursive *)
-(* TODO more record syntax adjusting *)
 type ('a, 'b) statement_visitor = {
-  (* visit_method_call:
-    'a ->
-    { func: Expression.t;
-      type_args: Type.t list;
-      args: Argument.t list } -> 'b;
-  visit_assignment:
-    'a ->
-    { lhs: Expression.t;
-      rhs: Expression.t } -> 'b;
-  visit_direct_application:
-    'a ->
-    { typ: Type.t;
-      args: Argument.t list } -> 'b; *)
   visit_method_call:
     'a -> Expression.t -> Type.t list -> (Expression.t option) list -> 'b;
   visit_assignment: 'a -> Expression.t -> Expression.t -> 'b;
@@ -557,12 +428,6 @@ type ('a, 'b) statement_visitor = {
   visit_block_statement: 'a -> Block.t -> 'b;
   visit_exit: 'a -> 'b;
   visit_empty_statement: 'a -> 'b;
-  (* visit_return: 'a -> { expr: Expression.t option } -> 'b;
-  visit_switch:
-    'a ->
-    { expr: Expression.t;
-      cases: switch_case list } -> 'b;
-  visit_declaration_statement: 'a -> { decl: Declaration.t } -> 'b; *)
   visit_return: 'a -> Expression.t option -> 'b;
   visit_switch: 'a -> Expression.t -> Statement.switch_case list -> 'b;
   visit_declaration_statement: 'a -> Declaration.t -> 'b;
@@ -572,9 +437,6 @@ type ('a, 'b) statement_visitor = {
 let rec statement_visit_helper v acc (s_info: Prog.Statement.t) =
   let s_typ = snd s_info in
   match s_typ.stmt with
-  (* | MethodCall mc -> v.visit_method_call acc mc
-  | Assignment a -> v.visit_assignment acc a
-  | DirectApplication da -> v.visit_direct_application acc da *)
   | MethodCall {func; type_args; args} ->
     v.visit_method_call acc func type_args args
   | Assignment {lhs; rhs} -> v.visit_assignment acc lhs rhs
@@ -588,19 +450,15 @@ let rec statement_visit_helper v acc (s_info: Prog.Statement.t) =
         (statement_visit_helper v acc_tru tru)
         (Some (statement_visit_helper v acc_fls fls_branch))
     end
-  (* | BlockStatement bs -> v.visit_block_statement acc bs *)
   | BlockStatement {block} -> v.visit_block_statement acc block
   | Exit -> v.visit_exit acc
   | EmptyStatement -> v.visit_empty_statement acc
-  (* | Return r -> v.visit_return acc r
-  | Switch s -> v.visit_switch acc s
-  | DeclarationStatement ds -> v.visit_declaration_statement acc ds *)
   | Return {expr} -> v.visit_return acc expr
   | Switch {expr; cases} -> v.visit_switch acc expr cases
   | DeclarationStatement {decl} -> v.visit_declaration_statement acc decl
 
 (*
-TODO Block not recursive
+Block not recursive
 Blocks contain annotations and statements
 Declarations and statements contain blocks
 Annotations contain expressions and Key Values
@@ -613,7 +471,32 @@ let block_visit_helper v acc (b_info: Prog.Block.t) =
   let b = snd b_info in
   v.visit_block acc b.annotations b.statements
 
-(* TODO Program not recursive *)
+type ('a, 'b) parser_visitor = {
+  enter_state: 'a -> Annotation.t list -> P4String.t -> Statement.t list -> 'a;
+  exit_state: 'b -> 'b;
+  (* these are for transitions *)
+  visit_direct: 'a -> P4String.t -> 'b;
+  visit_select_nil: 'a -> Expression.t list -> 'b;
+  enter_select_cons: 'a -> ('a * 'a);
+  exit_select_cons: 'b -> 'b -> 'b;
+  (* lastly, for cases *)
+  visit_case: 'a -> Match.t list -> P4String.t -> 'b;
+}
+
+let parser_visit_helper v acc (p_info: Prog.Parser.state) =
+  let p = snd p_info in
+  let acc' = v.enter_state acc p.annotations p.name p.statements in
+  let rec select_loop acc_loop expr_list (cases_list: Parser.case list) =
+    match cases_list with
+    | [] -> v.visit_select_nil acc_loop expr_list
+    | (_, h) :: t -> let (acc_h, acc_t) = v.enter_select_cons acc_loop in
+      v.exit_select_cons
+        (v.visit_case acc_h h.matches h.next)
+        (select_loop acc_t expr_list t)
+  in
+  match snd p.transition with
+  | Direct {next} -> v.visit_direct acc' next
+  | Select {exprs; cases} -> select_loop acc' exprs cases
 
 type ('a, 'b) program_visitor = {
   visit_program_nil: 'a -> 'b;
@@ -753,8 +636,7 @@ let statement_count =
   A Parser can be contained in a Declaration.
   A Program cannot be contained in anything.
 *)
-(* TODO no mutual recursion for now *)
-let declaration_headers_visitor =
+let rec declaration_headers_visitor =
   let get_header_name = (fun _ _ name _ -> [name]) in
   let base2 = (fun _ _ -> []) in
   let base4 = (fun _ _ _ _ -> []) in
@@ -765,34 +647,42 @@ let declaration_headers_visitor =
   let enter1_ignore = (fun _ _ _ -> ()) in
   let enter2 = (fun _ -> ((), ())) in
   let exit1 = (fun l -> l) in
-  let exit2 = (@) in {
+  let exit2 = (@) in
+  let block_helper = block_visit_helper block_headers_visitor () in
+  let block5 = (fun _ _ _ _ _ -> block_helper) in
+  let block6 = (fun _ _ _ _ _ _ -> block_helper) in {
   visit_constant = base5;
-  (* This one can contain a Block *)
-  visit_instantiation = base6;
-  (* TODO implementation not decided *)
-  visit_parser_nil = base7;
+  visit_instantiation = (fun _ _ _ _ _ block_opt ->
+    match block_opt with
+    | None -> []
+    | Some b -> block_helper b
+  );
+  visit_parser_nil = (fun _ _ _ _ _ _ states ->
+    let header_lists =
+      List.map
+        (parser_visit_helper parser_headers_visitor [])
+        states
+    in List.fold_left (@) [] header_lists
+  );
   enter_parser_cons = enter2;
   exit_parser_cons = exit2;
-  visit_control_nil = base7;
+  visit_control_nil = block6;
   enter_control_cons = enter2;
   exit_control_cons = exit2;
-  (* TODO can contain a Block *)
-  visit_function = base6;
+  visit_function = block5;
   visit_extern_function = base6;
   visit_variable = base5;
   visit_value_set = base5;
-  visit_action = base6;
+  visit_action = block5;
   visit_table = base9;
   visit_header = get_header_name;
   visit_header_union = get_header_name;
-  (* TODO fields are probably irrelevant *)
   visit_struct = base4;
   visit_error = base2;
   visit_match_kind = base2;
   visit_enum = base4;
   visit_serializable_enum = base5;
   visit_extern_object = base5;
-  (* TODO these next two groups of cases ignore side information *)
   visit_type_def_type = base4;
   enter_type_def_decl = enter1_ignore;
   exit_type_def_decl = exit1;
@@ -803,3 +693,76 @@ let declaration_headers_visitor =
   visit_parser_type = base5;
   visit_package_type = base5;
 }
+
+(* Statement can contain Declaration or Block, but not Parser *)
+and statement_headers_visitor =
+  let base1 = (fun _ -> []) in
+  let base2 = (fun _ _ -> []) in
+  let base3 = (fun _ _ _ -> []) in
+  let base4 = (fun _ _ _ _ -> []) in
+  let split = (fun _ _ -> ((), ())) in {
+  visit_method_call = base4;
+  visit_assignment = base3;
+  visit_direct_application = base3;
+  enter_conditional = split;
+  exit_conditional =
+    begin fun l1 l2 ->
+      match l2 with
+      | None -> l1
+      | Some l2' -> l1 @ l2'
+    end;
+  visit_block_statement =
+    (fun _ -> block_visit_helper block_headers_visitor ());
+  visit_exit = base1;
+  visit_empty_statement = base1;
+  visit_return = base2;
+  visit_switch = base3;
+  visit_declaration_statement =
+    declaration_visit_helper declaration_headers_visitor;
+}
+
+(* TODO map not tail recursive *)
+and block_headers_visitor = {
+  visit_block = (fun acc _ statements ->
+    let header_lists =
+      List.map
+        (statement_visit_helper statement_headers_visitor acc)
+        statements
+    in List.fold_left (@) [] header_lists
+  );
+}
+
+(* TODO no use for Expressions *)
+(* TODO make sure this is correct *)
+and parser_headers_visitor =
+  let base2 = (fun l _ -> l) in
+  let base3 = (fun l _ _ -> l) in
+  let enter2 = (fun l -> (l, l)) in
+  let exit1 = (fun l -> l) in
+  let exit2 = (@) in {
+  enter_state = (fun _ _ _ statements ->
+    let header_lists =
+      List.map
+        (statement_visit_helper statement_headers_visitor ())
+        statements
+    in List.fold_left (@) [] header_lists
+  );
+  exit_state = exit1;
+  visit_direct = base2;
+  visit_select_nil = base2;
+  enter_select_cons = enter2;
+  exit_select_cons = exit2;
+  visit_case = base3;
+}
+
+let program_headers_visitor = {
+  visit_program_nil= (fun _ -> []);
+  visit_single_declaration =
+    declaration_visit_helper declaration_headers_visitor;
+  enter_program_cons = (fun _ -> ((), ()));
+  exit_program_cons = (@);
+}
+
+let all_headers (p: Prog.program) =
+  let headers = program_visit_helper program_headers_visitor () p in
+  List.sort_uniq headers
