@@ -93,6 +93,14 @@ Declarations can contain parsers
 This means that there's no cycle back to MethodPrototype
 *)
 
+type ('a, 'b) key_value_visitor = {
+  visit_key_value: 'a -> P4String.t -> Expression.t -> 'b;
+}
+
+let key_value_visit_helper v acc (kv_info: Prog.KeyValue.t) =
+  let kv = snd kv_info in
+  v.visit_key_value acc kv.key kv.value
+
 type ('a, 'b) expression_visitor = {
   visit_true: 'a -> 'b;
   visit_false: 'a -> 'b;
@@ -624,6 +632,113 @@ let statement_count_visitor =
 
 let statement_count =
   statement_visit_helper statement_count_visitor ()
+
+(* TODO Ignore may not actually have a use *)
+type header_visit_state =
+  | Search
+  | Construct of string
+  | Ignore
+
+let end_construct x =
+  match x with
+  | Construct _ -> Search
+  | _ -> x
+
+let rec key_value_headers_visitor = {
+  visit_key_value = begin fun acc _ e_info ->
+    expression_visit_helper expression_headers_visitor acc e_info
+  end
+}
+
+(**
+  TODO This is just a guess at how header structure works now.
+  Compose headers from ExpressionMember constructors whose children are either
+  Name or ExpressionMember.
+*)
+and expression_headers_visitor =
+  let base1 = (fun _ -> []) in
+  let base2 = (fun _ _ -> []) in
+  let base3 = (fun _ _ _ -> []) in
+  (* let enter1 = (fun x -> x) in *)
+  (* let enter1 = end_construct in *)
+  (* let enter2 = (fun x -> (x, x)) in *)
+  let enter2 = (fun x -> let x' = end_construct x in (x', x')) in
+  (* let enter3 = (fun x -> (x, x, x)) in *)
+  let enter3 = (fun x -> let x' = end_construct x in (x', x', x')) in
+  let enter1_ignore1 = (fun x _ -> end_construct x) in
+  let enter1_ignore2 = (fun x _ _ -> end_construct x) in
+  let enter2_ignore1 = (fun x _ -> let x' = end_construct x in (x', x')) in
+  let exit1 = (fun l -> l) in
+  let exit2 = (@) in
+  let exit3 = (fun l1 l2 l3 -> l1 @ (l2 @ l3)) in {
+  visit_true = base1;
+  visit_false = base1;
+  visit_int = base2;
+  visit_string = base2;
+  visit_name = begin fun x s_info ->
+    match x with
+    | Search
+    | Ignore -> []
+    | Construct s -> [s ^ "." ^ (snd s_info)]
+    end;
+  visit_top_level = base2;
+  enter_array_access = enter2;
+  exit_array_access = exit2;
+  enter_bit_string_access = enter1_ignore2;
+  exit_bit_string_access = exit1;
+  visit_list_nil = base1;
+  enter_list_cons = enter2;
+  exit_list_cons = exit2;
+  visit_record = begin fun x kv_list ->
+    let header_lists =
+      List.map
+        (key_value_visit_helper key_value_headers_visitor (end_construct x))
+        kv_list
+    in List.fold_left (@) [] header_lists
+    end;
+  (* (fun x -> key_value_visit_helper key_value_headers_visitor x); *)
+  enter_unary_op = enter1_ignore1;
+  exit_unary_op = exit1;
+  enter_binary_op = enter2_ignore1;
+  exit_binary_op = exit2;
+  enter_cast = enter1_ignore1;
+  exit_cast = exit1;
+  visit_type_member = base3;
+  visit_error_member = base2;
+  enter_expression_member = begin fun x s_info ->
+    match x with
+    | Search -> Construct (snd s_info)
+    | Construct s -> Construct (s ^ "." ^ (snd s_info))
+    | Ignore -> Ignore
+    end;
+  exit_expression_member = exit1;
+  (* begin fun lst ->
+    match lst with
+    | _ :: _ -> failwith "Only one header name should be found"
+    | _ -> lst
+    end; *)
+  enter_ternary = enter3;
+  exit_ternary = exit3;
+  enter_function_call_nil = enter1_ignore1;
+  exit_function_call_nil = exit1;
+  enter_function_call_cons = enter2;
+  exit_function_call_cons = begin fun l1 l2 ->
+    match l1 with
+    | Some l1' -> exit2 l1' l2
+    | None -> exit1 l2
+    end;
+  visit_nameless_instantiation_nil = base2;
+  enter_nameless_instantiation_cons = enter2;
+  exit_nameless_instantiation_cons = exit2;
+  visit_dont_care = base1;
+  enter_mask = enter2;
+  exit_mask = exit2;
+  enter_range = enter2;
+  exit_range = exit2;
+}
+
+let headers_in_expression =
+  expression_visit_helper expression_headers_visitor Search
 
 (**
   This is the start of a group of visitors for collecting all of the headers
