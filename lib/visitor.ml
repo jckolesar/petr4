@@ -7,6 +7,9 @@ open Expression
 open Declaration
 open Statement
 
+module Visitors = struct
+(* TODO decide what's publicly visible *)
+
 (*
 TODO Annotation
 They can contain arguments, which can contain expressions
@@ -243,7 +246,6 @@ One use elsewhere, it's in Declaration
 The side information for it is left out for now
 *)
 
-(* TODO Declaration is recursive *)
 type ('a, 'b) declaration_visitor = {
   visit_constant:
     'a -> Annotation.t list -> Type.t -> P4String.t -> Value.value -> 'b;
@@ -636,19 +638,20 @@ let statement_count =
   A Parser can be contained in a Declaration.
   A Program cannot be contained in anything.
 *)
+(* TODO my interpretation of "header uses" was wrong *)
 let rec declaration_headers_visitor =
   let get_header_name = (fun _ _ name _ -> [name]) in
   let base2 = (fun _ _ -> []) in
   let base4 = (fun _ _ _ _ -> []) in
   let base5 = (fun _ _ _ _ _ -> []) in
   let base6 = (fun _ _ _ _ _ _ -> []) in
-  let base7 = (fun _ _ _ _ _ _ _ -> []) in
   let base9 = (fun _ _ _ _ _ _ _ _ _ -> []) in
   let enter1_ignore = (fun _ _ _ -> ()) in
   let enter2 = (fun _ -> ((), ())) in
   let exit1 = (fun l -> l) in
   let exit2 = (@) in
-  let block_helper = block_visit_helper block_headers_visitor () in
+  let block_helper = (fun b ->
+    block_visit_helper block_headers_visitor () b) in
   let block5 = (fun _ _ _ _ _ -> block_helper) in
   let block6 = (fun _ _ _ _ _ _ -> block_helper) in {
   visit_constant = base5;
@@ -717,8 +720,8 @@ and statement_headers_visitor =
   visit_empty_statement = base1;
   visit_return = base2;
   visit_switch = base3;
-  visit_declaration_statement =
-    declaration_visit_helper declaration_headers_visitor;
+  visit_declaration_statement = (fun acc decl ->
+    declaration_visit_helper declaration_headers_visitor acc decl);
 }
 
 (* TODO map not tail recursive *)
@@ -765,4 +768,6 @@ let program_headers_visitor = {
 
 let all_headers (p: Prog.program) =
   let headers = program_visit_helper program_headers_visitor () p in
-  List.sort_uniq headers
+  List.sort_uniq (Stdlib.compare) headers
+
+end
