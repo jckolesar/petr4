@@ -1,87 +1,9 @@
 open Types
 open Typed
 open Prog
-(* open Type *)
-(* open Argument *)
 open Expression
 open Declaration
 open Statement
-
-module Visitors = struct
-(* TODO decide what's publicly visible *)
-
-(*
-TODO Annotation
-They can contain arguments, which can contain expressions
-However, they are not directly recursive
-*)
-
-(*
-TODO Type is recursive
-These can contain expressions
-*)
-
-(*
-type ('a, 'b) type_visitor = {
-  visit_bool: 'a -> 'b;
-  visit_error: 'a -> 'b;
-  visit_integer: 'a -> 'b;
-  visit_int_type: 'a -> Expression.t -> 'b;
-  visit_bit_type: 'a -> Expression.t -> 'b;
-  visit_var_bit: 'a -> Expression.t -> 'b;
-  visit_top_level_type: 'a -> P4String.t -> 'b;
-  visit_type_name: 'a -> P4String.t -> 'b;
-  (* TODO how to handle this case? *)
-  enter_specialized_type_nil: 'a -> 'a;
-  exit_specialized_type_nil: 'b -> 'b;
-  enter_specialized_type_cons: 'a -> ('a * 'a);
-  exit_specialized_type_cons: 'b -> 'b -> 'b;
-  (* TODO side information can be recursive *)
-  enter_header_stack: 'a -> Expression.t -> 'a;
-  exit_header_stack: 'b -> 'b;
-  visit_tuple_nil: 'a -> 'b;
-  enter_tuple_cons: 'a -> ('a * 'a);
-  exit_tuple_cons: 'b -> 'b -> 'b;
-  visit_string: 'a -> 'b;
-  visit_void: 'a -> 'b;
-  visit_dont_care: 'a -> 'b;
-}
-*)
-
-(*
-let rec type_visit_helper v acc t_info =
-  let dummy_info = fst t_info in
-  match snd t_info with
-  | Bool -> v.visit_bool acc
-  | Error -> v.visit_error acc
-  | Integer -> v.visit_integer acc
-  | IntType e -> v.visit_int_type acc e
-  | BitType e -> v.visit_bit_type acc e
-  | VarBit e -> v.visit_var_bit acc e
-  | TopLevelType s -> v.visit_top_level_type acc s
-  | TypeName s -> v.visit_type_name acc s
-  | SpecializedType {base; args} -> begin match args with
-    | [] -> let acc' = v.enter_specialized_type_nil acc in
-      v.exit_specialized_type_nil (type_visit_helper v acc' base)
-    | h :: t -> let (acc_h, acc_t) = v.enter_specialized_type_cons acc in
-      v.exit_specialized_type_cons
-        (type_visit_helper v acc_h h)
-        (type_visit_helper v acc_t
-          (dummy_info, SpecializedType {base = base; args = t}))
-    end
-  | HeaderStack {header; size} ->
-    let acc' = v.enter_header_stack acc size in
-    v.exit_header_stack (type_visit_helper v acc' header)
-  | Tuple l -> begin match l with
-    | [] -> v.visit_tuple_nil acc
-    | h :: t -> let (acc_h, acc_t) = v.enter_tuple_cons acc in
-      v.exit_tuple_cons (type_visit_helper v acc_h h)
-                        (type_visit_helper v acc_t (dummy_info, Tuple t))
-    end
-  | String -> v.visit_string acc
-  | Void -> v.visit_void acc
-  | DontCare -> v.visit_dont_care acc
-*)
 
 (*
 TODO MethodPrototype
@@ -599,79 +521,6 @@ let rec program_visit_helper v acc (p: Prog.program) =
 (* Example uses of the visitor structures *)
 
 (**
-  This visitor determines the depth of a Type.t.  It does not take the
-  mutual recursion of Petr4 AST types into account:  it treats any
-  Expression.t or P4String.t within the Type.t as having no depth.
- *)
-(*
-let type_depth_visitor =
-  let base = (fun n -> n) in
-  let base_ignore_term = (fun n _ -> n) in
-  let incr = (fun n -> n + 1) in
-  let incr_ignore_term = (fun n _ -> n + 1) in
-  let split = (fun n -> (n + 1, n + 1)) in {
-  visit_bool = base;
-  visit_error = base;
-  visit_integer = base;
-  visit_int_type = base_ignore_term;
-  visit_bit_type = base_ignore_term;
-  visit_var_bit = base_ignore_term;
-  visit_top_level_type = base_ignore_term;
-  visit_type_name = base_ignore_term;
-  enter_specialized_type_nil = incr;
-  exit_specialized_type_nil = base;
-  enter_specialized_type_cons = split;
-  exit_specialized_type_cons = max;
-  enter_header_stack = incr_ignore_term;
-  exit_header_stack = base;
-  visit_tuple_nil = base;
-  enter_tuple_cons = split;
-  exit_tuple_cons = max;
-  visit_string = base;
-  visit_void = base;
-  visit_dont_care = base;
-}
-
-let type_depth =
-  type_visit_helper type_depth_visitor 0
-*)
-
-(*
-let type_depth_bottom_up_visitor =
-  let base = (fun _ -> 0) in
-  let base_ignore_term = (fun _ _ -> 0) in
-  let up1 = (fun n -> 1 + n) in
-  let down1 = (fun _ -> ()) in
-  let down1_ignore_term = (fun _ _ -> ()) in
-  let down2 = (fun _ -> ((), ())) in
-  let up2 = (fun n m -> 1 + max n m) in {
-  visit_bool = base;
-  visit_error = base;
-  visit_integer = base;
-  visit_int_type = base_ignore_term;
-  visit_bit_type = base_ignore_term;
-  visit_var_bit = base_ignore_term;
-  visit_top_level_type = base_ignore_term;
-  visit_type_name = base_ignore_term;
-  enter_specialized_type_nil = down1;
-  exit_specialized_type_nil = up1;
-  enter_specialized_type_cons = down2;
-  exit_specialized_type_cons = up2;
-  enter_header_stack = down1_ignore_term;
-  exit_header_stack = up1;
-  visit_tuple_nil = base;
-  enter_tuple_cons = down2;
-  exit_tuple_cons = up2;
-  visit_string = base;
-  visit_void = base;
-  visit_dont_care = base;
-}
-
-let type_depth_bottom_up =
-  type_visit_helper type_depth_bottom_up_visitor ()
-*)
-
-(**
   This visitor determines the number of nodes in a Statement.t.  It ignores
   all other Petr4 AST types.
 *)
@@ -878,10 +727,11 @@ let rec exprs_statement_visitor =
     | Action {label; code} -> exprs_block code
     | FallThrough _ -> []
   end in {
-  (* TODO has potential to raise an exception *)
   visit_method_call = begin fun acc e _ e_opt_lst ->
-    let e_some_lst = (List.filter Option.is_some e_opt_lst) in
-    e :: (List.map Option.get e_some_lst) @ acc
+    let e_lst = List.filter_map (fun x -> x) e_opt_lst in
+    e :: e_lst
+    (* let e_some_lst = (List.filter Option.is_some e_opt_lst) in
+    e :: (List.map Option.get e_some_lst) @ acc *)
     end;
   (* TODO is assignment special? *)
   visit_assignment = (fun acc e1 e2 -> e1 :: e2 :: acc);
@@ -1101,84 +951,6 @@ let get_all_headers (p: Prog.program) =
   let headers = List.fold_left (@) [] header_lists in
   List.sort_uniq Stdlib.compare headers
 
-(*
-let rec delaration_header_uses_visitor = {
-  visit_constant:
-    'a -> Annotation.t list -> Type.t -> P4String.t -> Value.value -> 'b;
-  visit_instantiation:
-    'a -> Annotation.t list -> Type.t -> Expression.t list ->
-    P4String.t -> Block.t option -> 'b;
-  (* TODO current implementation handles side info only in nil case *)
-  visit_parser_nil:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> TypeParameter.t list ->
-    TypeParameter.t list -> Parser.state list -> 'b;
-  enter_parser_cons: 'a -> ('a * 'a);
-  exit_parser_cons: 'b -> 'b -> 'b;
-  visit_control_nil:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> TypeParameter.t list ->
-    TypeParameter.t list -> Block.t -> 'b;
-  enter_control_cons: 'a -> ('a * 'a);
-  exit_control_cons: 'b -> 'b -> 'b;
-  visit_function:
-    'a -> Type.t -> P4String.t -> P4String.t list ->
-    TypeParameter.t list -> Block.t -> 'b;
-  visit_extern_function:
-    'a -> Annotation.t list -> Type.t -> P4String.t ->
-    P4String.t list -> TypeParameter.t list -> 'b;
-  visit_variable:
-    'a -> Annotation.t list -> Type.t ->
-    P4String.t -> Expression.t option -> 'b;
-  visit_value_set:
-    'a -> Annotation.t list -> Type.t ->
-    Expression.t -> P4String.t -> 'b;
-  visit_action:
-    'a -> Annotation.t list -> P4String.t ->
-    TypeParameter.t list -> TypeParameter.t list ->
-    Block.t -> 'b;
-  visit_table:
-    'a -> Annotation.t list -> P4String.t ->
-    Table.key list -> Table.action_ref list ->
-    (Table.entry list) option ->
-    Table.action_ref option ->
-    P4Int.t option -> Table.property list -> 'b;
-  visit_header:
-    'a -> Annotation.t list -> P4String.t ->
-    Declaration.field list -> 'b;
-  visit_header_union:
-    'a -> Annotation.t list -> P4String.t ->
-    Declaration.field list -> 'b;
-  visit_struct:
-    'a -> Annotation.t list -> P4String.t ->
-    Declaration.field list -> 'b;
-  visit_error: 'a -> P4String.t list -> 'b;
-  visit_match_kind: 'a -> P4String.t list -> 'b;
-  visit_enum: 'a -> Annotation.t list -> P4String.t -> P4String.t list -> 'b;
-  visit_serializable_enum:
-    'a -> Annotation.t list -> Type.t -> P4String.t ->
-    (P4String.t * Expression.t) list -> 'b;
-  visit_extern_object:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> MethodPrototype.t list -> 'b;
-  visit_type_def_type: 'a -> Annotation.t list -> P4String.t -> Type.t -> 'b;
-  enter_type_def_decl: 'a -> Annotation.t list -> P4String.t -> 'a;
-  exit_type_def_decl: 'b -> 'b;
-  visit_new_type_type: 'a -> Annotation.t list -> P4String.t -> Type.t -> 'b;
-  enter_new_type_decl: 'a -> Annotation.t list -> P4String.t -> 'a;
-  exit_new_type_decl: 'b -> 'b;
-  visit_control_type:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> TypeParameter.t list -> 'b;
-  visit_parser_type:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> TypeParameter.t list -> 'b;
-  visit_package_type:
-    'a -> Annotation.t list -> P4String.t ->
-    P4String.t list -> TypeParameter.t list -> 'b;
-}
-*)
-
 (**
   This is the start of a group of visitors for collecting all of the headers
   used in a program.
@@ -1323,5 +1095,3 @@ let program_headers_visitor = {
 let all_headers (p: Prog.program) =
   let headers = program_visit_helper program_headers_visitor () p in
   List.sort_uniq (Stdlib.compare) headers
-
-end
