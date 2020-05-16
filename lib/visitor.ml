@@ -827,8 +827,8 @@ let exprs_type_parameter =
 
 let exprs_method_prototype_visitor =
   let base = begin fun tp_lst ->
-    let header_lists = List.rev_map exprs_type_parameter tp_lst in
-    List.fold_left (@) [] header_lists
+    let expr_lists = List.rev_map exprs_type_parameter tp_lst in
+    List.fold_left (@) [] expr_lists
     end in {
   visit_constructor = (fun _ _ _ -> base);
   visit_abstract_method = (fun _ _ _ _ _ -> base);
@@ -848,9 +848,36 @@ let exprs_match =
 
 (* TODO leaving out table for now *)
 
-(*
+(**
+  These functions are for getting Expressions from Table data types.
+  The ordinary visitor structure does not make sense for them.
+  The ones that always contain exactly one Expression do not return lists.
+*)
+
+let exprs_table_action_ref (ar_info: Prog.Table.action_ref) =
+  let ar = (snd ar_info).action in
+  List.filter_map (fun e_opt -> e_opt) ar.args
+
+let exprs_table_key (k_info: Prog.Table.key) =
+  (snd k_info).key
+
+let exprs_table_entry (e_info: Prog.Table.entry) =
+  let e = snd e_info in
+  e.matches |>
+  (List.rev_map exprs_match) |>
+  (List.fold_left (@) []) |>
+  ((@) (exprs_table_action_ref e.action))
+
+let exprs_table_property (p_info: Prog.Table.property) =
+  (snd p_info).value
+
 let rec exprs_statement_visitor =
-  let base1 = (fun l -> l) in {
+  let base1 = (fun l -> l) in
+  let exprs_switch_case = begin fun sc ->
+    match (snd sc) with
+    | Action {label; code} -> exprs_block code
+    | FallThrough _ -> []
+  end in {
   (* TODO has potential to raise an exception *)
   visit_method_call = begin fun acc e _ e_opt_lst ->
     let e_some_lst = (List.filter Option.is_some e_opt_lst) in
@@ -859,25 +886,217 @@ let rec exprs_statement_visitor =
   (* TODO is assignment special? *)
   visit_assignment = (fun acc e1 e2 -> e1 :: e2 :: acc);
   visit_direct_application = (fun acc _ e_lst -> e_lst @ acc);
-  (* the distribution between branches on the way down is irrelevant *)
-  enter_conditional = (fun acc e -> (acc, [e]));
-  exit_conditional: 'b -> 'b option -> 'b;
-  visit_block_statement = failwith "TODO";
-  (* 'a -> Block.t -> 'b; *)
+  (* TODO put on left so not discarded if right branch is None *)
+  enter_conditional = (fun acc e -> (e :: acc, []));
+  exit_conditional = begin fun l1 l2 ->
+    match l2 with
+    | Some l2' -> l1 @ l2'
+    | None -> l1
+    end;
+  visit_block_statement = (fun acc b -> acc @ (exprs_block b));
   visit_exit = base1;
   visit_empty_statement = base1;
-  visit_return: 'a -> Expression.t option -> 'b;
-  visit_switch: 'a -> Expression.t -> Statement.switch_case list -> 'b;
-  visit_declaration_statement: 'a -> Declaration.t -> 'b;
+  visit_return = begin fun acc e_opt ->
+    match e_opt with
+    | Some e -> e :: acc
+    | None -> acc
+    end;
+  visit_switch = begin fun acc e cases ->
+    let expr_lists = List.rev_map exprs_switch_case cases in
+    let exprs = List.fold_left (@) [] expr_lists in
+    e :: (acc @ exprs)
+    end;
+  visit_declaration_statement = (fun acc d -> acc @ (exprs_declaration d));
 }
-*)
 
-let get_expressions (p: Prog.program) =
-  failwith "TODO"
+and exprs_statement s_info =
+  statement_visit_helper exprs_statement_visitor [] s_info
+
+and exprs_block_visitor = {
+  visit_block = begin fun _ _ s_lst ->
+    let expr_lists = List.rev_map exprs_statement s_lst in
+    List.fold_left (@) [] expr_lists
+    end;
+}
+
+and exprs_block b_info =
+  block_visit_helper exprs_block_visitor () b_info
+
+and exprs_parser_visitor =
+  let base2 = (fun l _ -> l) in
+  (* distribution of previously seen expressions here is irrelevant *)
+  let enter2 = (fun l -> (l, [])) in
+  let exit1 = (fun l -> l) in
+  let exit2 = (@) in {
+  enter_state = begin fun acc _ _ s_lst ->
+    s_lst |>
+    (List.rev_map exprs_statement) |>
+    (List.fold_left (@) []) |>
+    ((@) acc)
+    end;
+  exit_state = exit1;
+  visit_direct = base2;
+  visit_select_nil = (fun acc e_lst -> acc @ e_lst);
+  enter_select_cons = enter2;
+  exit_select_cons = exit2;
+  visit_case = begin fun acc m_lst _ ->
+    m_lst |>
+    (List.rev_map exprs_match) |>
+    (List.fold_left (@) []) |>
+    ((@) acc)
+    end;
+}
+
+and exprs_parser p_state =
+  parser_visit_helper exprs_parser_visitor [] p_state
+
+(* TODO fields are irrelevant *)
+and exprs_declaration_visitor =
+  let base2 = (fun l _ -> l) in
+  let base3 = (fun l _ _ -> l) in
+  let base4 = (fun l _ _ _ -> l) in
+  let base5 = (fun l _ _ _ _ -> l) in
+  let base_type_parameter = begin fun acc _ _ _ tp_lst ->
+    tp_lst |>
+    (List.rev_map exprs_type_parameter) |>
+    (List.fold_left (@) []) |>
+    ((@) acc)
+  end in
+  let enter2 = (fun l -> (l, [])) in
+  let exit1 = (fun l -> l) in
+  let exit2 = (@) in {
+  (* ignores Value.value *)
+  visit_constant = base5;
+  visit_instantiation = begin fun acc _ _ e_lst _ b_opt ->
+    match b_opt with
+    | Some b -> acc @ (e_lst @ (exprs_block b))
+    | None -> acc @ e_lst
+    end;
+  visit_parser_nil = begin fun acc _ _ _ tp_lst1 tp_lst2 p_lst ->
+    let exprs1 = tp_lst1 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs2 = tp_lst2 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs_p = p_lst |>
+      (List.rev_map exprs_parser) |>
+      (List.fold_left (@) []) in
+    acc @ (exprs1 @ (exprs2 @ exprs_p))
+    end;
+  enter_parser_cons = enter2;
+  exit_parser_cons = exit2;
+  visit_control_nil = begin fun acc _ _ _ tp_lst1 tp_lst2 b ->
+    let exprs1 = tp_lst1 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs2 = tp_lst2 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs_b = exprs_block b in
+    acc @ (exprs1 @ (exprs2 @ exprs_b))
+    end;
+  enter_control_cons = enter2;
+  exit_control_cons = exit2;
+  visit_function = begin fun acc _ _ _ tp_lst b ->
+    let exprs_tp = tp_lst |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs_b = exprs_block b in
+    acc @ (exprs_tp @ exprs_b)
+    end;
+  visit_extern_function = begin fun acc _ _ _ _ tp_lst ->
+    tp_lst |>
+    (List.rev_map exprs_type_parameter) |>
+    (List.fold_left (@) []) |>
+    ((@) acc)
+    end;
+  visit_variable = begin fun acc _ _ _ e_opt ->
+    match e_opt with
+    | Some e -> e :: acc
+    | None -> acc
+    end;
+  visit_value_set = (fun acc _ _ e _ -> e :: acc);
+  visit_action = begin fun acc _ _ tp_lst1 tp_lst2 b ->
+    let exprs1 = tp_lst1 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs2 = tp_lst2 |>
+      (List.rev_map exprs_type_parameter) |>
+      (List.fold_left (@) []) in
+    let exprs_b = exprs_block b in
+    acc @ (exprs1 @ (exprs2 @ exprs_b))
+    end;
+  visit_table = begin
+    fun acc _ _ keys action_refs entry_lst_opt
+    action_ref_opt _ property_list ->
+    let exprs_key = List.rev_map exprs_table_key keys in
+    let exprs_action_ref1 =
+      action_refs |>
+      (List.rev_map exprs_table_action_ref) |>
+      (List.fold_left (@) []) in
+    let exprs_entry = begin match entry_lst_opt with
+      | Some entry_lst ->
+        entry_lst |>
+        (List.rev_map exprs_table_entry) |>
+        (List.fold_left (@) [])
+      | None -> []
+      end in
+    let exprs_action_ref2 = begin match action_ref_opt with
+      | Some ar -> exprs_table_action_ref ar
+      | None -> []
+      end in
+    let exprs_property = List.rev_map exprs_table_property property_list in
+    acc |>
+    (@) exprs_key |>
+    (@) exprs_action_ref1 |>
+    (@) exprs_entry |>
+    (@) exprs_action_ref2 |>
+    (@) exprs_property
+    end;
+  visit_header = base4;
+  visit_header_union = base4;
+  visit_struct = base4;
+  visit_error = base2;
+  visit_match_kind = base2;
+  visit_enum = base4;
+  visit_serializable_enum = begin fun acc _ _ _ s_e_lst ->
+    let e_lst = List.rev_map snd s_e_lst in
+    acc @ e_lst
+    end;
+  visit_extern_object = begin fun acc _ _ _ mp_lst ->
+    mp_lst |>
+    (List.rev_map exprs_method_prototype) |>
+    (List.fold_left (@) []) |>
+    ((@) acc)
+    end;
+  visit_type_def_type = base4;
+  enter_type_def_decl = base3;
+  exit_type_def_decl = exit1;
+  visit_new_type_type = base4;
+  enter_new_type_decl = base3;
+  exit_new_type_decl = exit1;
+  visit_control_type = base_type_parameter;
+  visit_parser_type = base_type_parameter;
+  visit_package_type = base_type_parameter;
+}
+
+and exprs_declaration d_info =
+  declaration_visit_helper exprs_declaration_visitor [] d_info
+
+let exprs_program_visitor = {
+  visit_program_nil = (fun _ -> []);
+  visit_single_declaration = (fun _ d -> exprs_declaration d);
+  enter_program_cons = (fun _ -> ((), ()));
+  exit_program_cons = (@);
+}
+
+let all_expressions =
+  program_visit_helper exprs_program_visitor ()
 
 (** TODO is the folding inefficient? *)
 let get_all_headers (p: Prog.program) =
-  let exprs = get_expressions p in
+  let exprs = all_expressions p in
   let header_lists = List.rev_map headers_in_expression exprs in
   let headers = List.fold_left (@) [] header_lists in
   List.sort_uniq Stdlib.compare headers
