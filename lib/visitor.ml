@@ -93,6 +93,42 @@ Declarations can contain parsers
 This means that there's no cycle back to MethodPrototype
 *)
 
+type ('a, 'b) type_parameter_visitor = {
+  visit_type_parameter:
+    'a -> Annotation.t list -> direction ->
+    Type.t -> P4String.t -> Expression.t option -> 'b;
+}
+
+let type_parameter_visit_helper v acc (tp_info: Prog.TypeParameter.t) =
+  let tp = snd tp_info in
+  v.visit_type_parameter
+    acc tp.annotations tp.direction
+    tp.typ tp.variable tp.opt_value
+
+type ('a, 'b) method_prototype_visitor = {
+  visit_constructor:
+    'a -> Annotation.t list -> P4String.t ->
+    TypeParameter.t list -> 'b;
+  visit_abstract_method:
+    'a -> Annotation.t list -> Type.t ->
+    P4String.t -> P4String.t list ->
+    TypeParameter.t list -> 'b;
+  visit_method:
+    'a -> Annotation.t list -> Type.t ->
+    P4String.t -> P4String.t list ->
+    TypeParameter.t list -> 'b;
+}
+
+let method_prototype_visit_helper v acc (mp_info: Prog.MethodPrototype.t) =
+  let mp = snd mp_info in
+  match mp with
+  | Constructor {annotations; name; params} ->
+    v.visit_constructor acc annotations name params
+  | AbstractMethod {annotations; return; name; type_params; params} ->
+    v.visit_abstract_method acc annotations return name type_params params
+  | Method {annotations; return; name; type_params; params} ->
+    v.visit_method acc annotations return name type_params params
+
 type ('a, 'b) key_value_visitor = {
   visit_key_value: 'a -> P4String.t -> Expression.t -> 'b;
 }
@@ -239,13 +275,46 @@ let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
                  (expression_visit_helper v acc_hi hi)
 
 (*
-TODO Table not recursive
-Only one use elsewhere in types, might not need anything
+TODO Match not recursive
+*)
+
+type ('a, 'b) match_visitor = {
+  visit_dont_care: 'a -> 'b;
+  visit_expression: 'a -> Expression.t -> 'b;
+}
+
+let match_visit_helper v acc (m_info: Prog.Match.t) =
+  let m = (snd m_info).expr in
+  match m with
+  | DontCare -> v.visit_dont_care acc
+  | Expression {expr} -> v.visit_expression acc expr
+
+(*
+TODO Table not recursive; not finished
+Can't have an ordinary table visit function
+TODO For my purposes, I only really need something
+that extracts all Expressions from a Table
 *)
 
 (*
-TODO Match not recursive
-Uses elsewhere are in Table and Parser
+type ('a, 'b) table_visitor = {
+  enter_table:
+    'a -> Annotation.t list ->
+    P4String.t -> P4Int.t option ->
+    ('a * 'a * 'a * 'a * 'a);
+  visit_key_nil: 'a -> 'b;
+  enter_key_cons:
+    'a -> Annotation.t list ->
+    Expression.t -> P4String.t -> 'a;
+  exit_key_cons: 'b -> 'b;
+  visit_actions_nil: 'a -> 'b;
+  enter_actions_cons: 'a ->
+  visit_action_ref:
+  visit_key:
+  visit_entry:
+  visit_property:
+  exit_table:
+}
 *)
 
 (*
@@ -637,12 +706,13 @@ let statement_count =
 type header_visit_state =
   | Search
   | Construct of string
-  | Ignore
 
-let end_construct x =
+let end_construct x = Search
+(*
   match x with
   | Construct _ -> Search
   | _ -> x
+*)
 
 let rec key_value_headers_visitor = {
   visit_key_value = begin fun acc _ e_info ->
@@ -677,8 +747,7 @@ and expression_headers_visitor =
   visit_string = base2;
   visit_name = begin fun x s_info ->
     match x with
-    | Search
-    | Ignore -> []
+    | Search -> []
     | Construct s -> [s ^ "." ^ (snd s_info)]
     end;
   visit_top_level = base2;
@@ -709,7 +778,6 @@ and expression_headers_visitor =
     match x with
     | Search -> Construct (snd s_info)
     | Construct s -> Construct (s ^ "." ^ (snd s_info))
-    | Ignore -> Ignore
     end;
   exit_expression_member = exit1;
   (* begin fun lst ->
@@ -739,6 +807,158 @@ and expression_headers_visitor =
 
 let headers_in_expression =
   expression_visit_helper expression_headers_visitor Search
+
+(**
+  TODO
+  The next step is to have a collection of visitors that fetch every
+  Expression.t from a program.
+*)
+
+let exprs_type_parameter_visitor = {
+  visit_type_parameter = begin fun acc _ _ _ _ e_opt ->
+    match e_opt with
+    | Some e -> [e]
+    | None -> []
+    end;
+}
+
+let exprs_type_parameter =
+  type_parameter_visit_helper exprs_type_parameter_visitor ()
+
+let exprs_method_prototype_visitor =
+  let base = begin fun tp_lst ->
+    let header_lists = List.rev_map exprs_type_parameter tp_lst in
+    List.fold_left (@) [] header_lists
+    end in {
+  visit_constructor = (fun _ _ _ -> base);
+  visit_abstract_method = (fun _ _ _ _ _ -> base);
+  visit_method = (fun _ _ _ _ _ -> base);
+}
+
+let exprs_method_prototype =
+  method_prototype_visit_helper exprs_method_prototype_visitor ()
+
+let exprs_match_visitor = {
+  visit_dont_care = (fun _ -> []);
+  visit_expression = (fun _ e -> [e]);
+}
+
+let exprs_match =
+  match_visit_helper exprs_match_visitor ()
+
+(* TODO leaving out table for now *)
+
+(*
+let rec exprs_statement_visitor =
+  let base1 = (fun l -> l) in {
+  (* TODO has potential to raise an exception *)
+  visit_method_call = begin fun acc e _ e_opt_lst ->
+    let e_some_lst = (List.filter Option.is_some e_opt_lst) in
+    e :: (List.map Option.get e_some_lst) @ acc
+    end;
+  (* TODO is assignment special? *)
+  visit_assignment = (fun acc e1 e2 -> e1 :: e2 :: acc);
+  visit_direct_application = (fun acc _ e_lst -> e_lst @ acc);
+  (* the distribution between branches on the way down is irrelevant *)
+  enter_conditional = (fun acc e -> (acc, [e]));
+  exit_conditional: 'b -> 'b option -> 'b;
+  visit_block_statement = failwith "TODO";
+  (* 'a -> Block.t -> 'b; *)
+  visit_exit = base1;
+  visit_empty_statement = base1;
+  visit_return: 'a -> Expression.t option -> 'b;
+  visit_switch: 'a -> Expression.t -> Statement.switch_case list -> 'b;
+  visit_declaration_statement: 'a -> Declaration.t -> 'b;
+}
+*)
+
+let get_expressions (p: Prog.program) =
+  failwith "TODO"
+
+(** TODO is the folding inefficient? *)
+let get_all_headers (p: Prog.program) =
+  let exprs = get_expressions p in
+  let header_lists = List.rev_map headers_in_expression exprs in
+  let headers = List.fold_left (@) [] header_lists in
+  List.sort_uniq Stdlib.compare headers
+
+(*
+let rec delaration_header_uses_visitor = {
+  visit_constant:
+    'a -> Annotation.t list -> Type.t -> P4String.t -> Value.value -> 'b;
+  visit_instantiation:
+    'a -> Annotation.t list -> Type.t -> Expression.t list ->
+    P4String.t -> Block.t option -> 'b;
+  (* TODO current implementation handles side info only in nil case *)
+  visit_parser_nil:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> TypeParameter.t list ->
+    TypeParameter.t list -> Parser.state list -> 'b;
+  enter_parser_cons: 'a -> ('a * 'a);
+  exit_parser_cons: 'b -> 'b -> 'b;
+  visit_control_nil:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> TypeParameter.t list ->
+    TypeParameter.t list -> Block.t -> 'b;
+  enter_control_cons: 'a -> ('a * 'a);
+  exit_control_cons: 'b -> 'b -> 'b;
+  visit_function:
+    'a -> Type.t -> P4String.t -> P4String.t list ->
+    TypeParameter.t list -> Block.t -> 'b;
+  visit_extern_function:
+    'a -> Annotation.t list -> Type.t -> P4String.t ->
+    P4String.t list -> TypeParameter.t list -> 'b;
+  visit_variable:
+    'a -> Annotation.t list -> Type.t ->
+    P4String.t -> Expression.t option -> 'b;
+  visit_value_set:
+    'a -> Annotation.t list -> Type.t ->
+    Expression.t -> P4String.t -> 'b;
+  visit_action:
+    'a -> Annotation.t list -> P4String.t ->
+    TypeParameter.t list -> TypeParameter.t list ->
+    Block.t -> 'b;
+  visit_table:
+    'a -> Annotation.t list -> P4String.t ->
+    Table.key list -> Table.action_ref list ->
+    (Table.entry list) option ->
+    Table.action_ref option ->
+    P4Int.t option -> Table.property list -> 'b;
+  visit_header:
+    'a -> Annotation.t list -> P4String.t ->
+    Declaration.field list -> 'b;
+  visit_header_union:
+    'a -> Annotation.t list -> P4String.t ->
+    Declaration.field list -> 'b;
+  visit_struct:
+    'a -> Annotation.t list -> P4String.t ->
+    Declaration.field list -> 'b;
+  visit_error: 'a -> P4String.t list -> 'b;
+  visit_match_kind: 'a -> P4String.t list -> 'b;
+  visit_enum: 'a -> Annotation.t list -> P4String.t -> P4String.t list -> 'b;
+  visit_serializable_enum:
+    'a -> Annotation.t list -> Type.t -> P4String.t ->
+    (P4String.t * Expression.t) list -> 'b;
+  visit_extern_object:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> MethodPrototype.t list -> 'b;
+  visit_type_def_type: 'a -> Annotation.t list -> P4String.t -> Type.t -> 'b;
+  enter_type_def_decl: 'a -> Annotation.t list -> P4String.t -> 'a;
+  exit_type_def_decl: 'b -> 'b;
+  visit_new_type_type: 'a -> Annotation.t list -> P4String.t -> Type.t -> 'b;
+  enter_new_type_decl: 'a -> Annotation.t list -> P4String.t -> 'a;
+  exit_new_type_decl: 'b -> 'b;
+  visit_control_type:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> TypeParameter.t list -> 'b;
+  visit_parser_type:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> TypeParameter.t list -> 'b;
+  visit_package_type:
+    'a -> Annotation.t list -> P4String.t ->
+    P4String.t list -> TypeParameter.t list -> 'b;
+}
+*)
 
 (**
   This is the start of a group of visitors for collecting all of the headers
