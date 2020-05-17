@@ -108,9 +108,21 @@ let eval_command =
     (fun verbose include_dir pkt_str ctrl_json p4file () ->
        print_string (eval_file include_dir p4file verbose pkt_str (Yojson.Safe.from_file ctrl_json)))
 
+let headers_command =
+  let open Command.Spec in
+  Command.basic_spec
+    ~summary: "Get all headers used in a P4 program"
+    (empty
+     +> flag "-v" no_arg ~doc:" Enable verbose output"
+     +> flag "-I" (listed string) ~doc:"<dir> Add directory to include search path"
+     +> anon ("p4file" %: string))
+    (fun verbose include_dir p4file () ->
+       print_string (headers_file include_dir p4file verbose))
+
 let command =
   Command.group
     ~summary: "Petr4: A reference implementation of the P4_16 language"
-    ["parse", parse_command; "typecheck", check_command; "run", eval_command]
+    ["parse", parse_command; "typecheck", check_command; "run", eval_command;
+    "headers", headers_command]
 
 let () = Command.run ~version: "0.1.1" command
