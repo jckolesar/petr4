@@ -117,7 +117,7 @@ let headers_command =
      +> flag "-I" (listed string) ~doc:"<dir> Add directory to include search path"
      +> anon ("p4file" %: string))
     (fun verbose include_dir p4file () ->
-       print_string (headers_file include_dir p4file verbose))
+       print_endline (headers_file include_dir p4file verbose))
 
 let command =
   Command.group

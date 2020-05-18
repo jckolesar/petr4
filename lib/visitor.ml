@@ -500,17 +500,11 @@ let statement_count_visitor =
 let statement_count =
   statement_visit_helper statement_count_visitor ()
 
-(* TODO Ignore may not actually have a use *)
 type header_visit_state =
   | Search
   | Construct of string
 
 let end_construct x = Search
-(*
-  match x with
-  | Construct _ -> Search
-  | _ -> x
-*)
 
 let rec key_value_headers_visitor = {
   visit_key_value = begin fun acc _ e_info ->
@@ -522,16 +516,14 @@ let rec key_value_headers_visitor = {
   TODO This is just a guess at how header structure works now.
   Compose headers from ExpressionMember constructors whose children are either
   Name or ExpressionMember.
+  TODO reverses header names, putting things before the dot when they should
+  come afterward and vice versa
 *)
 and expression_headers_visitor =
   let base1 = (fun _ -> []) in
   let base2 = (fun _ _ -> []) in
   let base3 = (fun _ _ _ -> []) in
-  (* let enter1 = (fun x -> x) in *)
-  (* let enter1 = end_construct in *)
-  (* let enter2 = (fun x -> (x, x)) in *)
   let enter2 = (fun x -> let x' = end_construct x in (x', x')) in
-  (* let enter3 = (fun x -> (x, x, x)) in *)
   let enter3 = (fun x -> let x' = end_construct x in (x', x', x')) in
   let enter1_ignore1 = (fun x _ -> end_construct x) in
   let enter1_ignore2 = (fun x _ _ -> end_construct x) in
@@ -546,7 +538,7 @@ and expression_headers_visitor =
   visit_name = begin fun x s_info ->
     match x with
     | Search -> []
-    | Construct s -> [s ^ "." ^ (snd s_info)]
+    | Construct s -> [(snd s_info) ^ "." ^ s]
     end;
   visit_top_level = base2;
   enter_array_access = enter2;
@@ -563,7 +555,6 @@ and expression_headers_visitor =
         kv_list
     in List.fold_left (@) [] header_lists
     end;
-  (* (fun x -> key_value_visit_helper key_value_headers_visitor x); *)
   enter_unary_op = enter1_ignore1;
   exit_unary_op = exit1;
   enter_binary_op = enter2_ignore1;
@@ -575,14 +566,9 @@ and expression_headers_visitor =
   enter_expression_member = begin fun x s_info ->
     match x with
     | Search -> Construct (snd s_info)
-    | Construct s -> Construct (s ^ "." ^ (snd s_info))
+    | Construct s -> Construct ((snd s_info) ^ "." ^ s)
     end;
   exit_expression_member = exit1;
-  (* begin fun lst ->
-    match lst with
-    | _ :: _ -> failwith "Only one header name should be found"
-    | _ -> lst
-    end; *)
   enter_ternary = enter3;
   exit_ternary = exit3;
   enter_function_call_nil = enter1_ignore1;

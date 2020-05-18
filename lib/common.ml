@@ -97,11 +97,15 @@ module Make_parse (Conf: Parse_config) = struct
       match parse_file include_dirs p4_file verbose with
       | `Ok prog ->
         let prog' = snd (Checker.check_program prog) in
-        let headers = Visitor.get_all_headers prog' in
-        let init = "" in
-        let f s1 s2 = s2 ^ ", " ^ s1 in
-        let headers_str = List.fold_left (List.rev headers) ~init ~f in
-        "[" ^ headers_str ^ "]"
+        let headers = List.rev (Visitor.get_all_headers prog') in
+        begin match headers with
+        | [] -> "[]"
+        | h :: t ->
+          let init = h in
+          let f s1 s2 = s2 ^ ", " ^ s1 in
+          let headers_str = List.fold_left t ~init ~f in
+          "[" ^ headers_str ^ "]"
+        end
       | `Error (info, exn) ->
         let exn_msg = Exn.to_string exn in
         let info_string = Info.to_string info in
