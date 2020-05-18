@@ -5,16 +5,6 @@ open Expression
 open Declaration
 open Statement
 
-(*
-TODO MethodPrototype
-They are not directly recursive; they can appear in declarations
-Statements can contain declarations
-Block and Parser can contain statements
-Statements and declarations can contain blocks
-Declarations can contain parsers
-This means that there's no cycle back to MethodPrototype
-*)
-
 type ('a, 'b) type_parameter_visitor = {
   visit_type_parameter:
     'a -> Annotation.t list -> direction ->
@@ -100,7 +90,6 @@ type ('a, 'b) expression_visitor = {
   exit_range: 'b -> 'b -> 'b;
 }
 
-(* TODO Currently throws out type in typed_t *)
 let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
   let dummy_info = fst e_info in
   let e_typ = snd e_info in
@@ -196,10 +185,6 @@ let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
     v.exit_range (expression_visit_helper v acc_lo lo)
                  (expression_visit_helper v acc_hi hi)
 
-(*
-TODO Match not recursive
-*)
-
 type ('a, 'b) match_visitor = {
   visit_dont_care: 'a -> 'b;
   visit_expression: 'a -> Expression.t -> 'b;
@@ -211,47 +196,12 @@ let match_visit_helper v acc (m_info: Prog.Match.t) =
   | DontCare -> v.visit_dont_care acc
   | Expression {expr} -> v.visit_expression acc expr
 
-(*
-TODO Table not recursive; not finished
-Can't have an ordinary table visit function
-TODO For my purposes, I only really need something
-that extracts all Expressions from a Table
-*)
-
-(*
-type ('a, 'b) table_visitor = {
-  enter_table:
-    'a -> Annotation.t list ->
-    P4String.t -> P4Int.t option ->
-    ('a * 'a * 'a * 'a * 'a);
-  visit_key_nil: 'a -> 'b;
-  enter_key_cons:
-    'a -> Annotation.t list ->
-    Expression.t -> P4String.t -> 'a;
-  exit_key_cons: 'b -> 'b;
-  visit_actions_nil: 'a -> 'b;
-  enter_actions_cons: 'a ->
-  visit_action_ref:
-  visit_key:
-  visit_entry:
-  visit_property:
-  exit_table:
-}
-*)
-
-(*
-TODO Parser not recursive
-One use elsewhere, it's in Declaration
-The side information for it is left out for now
-*)
-
 type ('a, 'b) declaration_visitor = {
   visit_constant:
     'a -> Annotation.t list -> Type.t -> P4String.t -> Value.value -> 'b;
   visit_instantiation:
     'a -> Annotation.t list -> Type.t -> Expression.t list ->
     P4String.t -> Block.t option -> 'b;
-  (* TODO current implementation handles side info only in nil case *)
   visit_parser_nil:
     'a -> Annotation.t list -> P4String.t ->
     P4String.t list -> TypeParameter.t list ->
@@ -434,7 +384,6 @@ type ('a, 'b) statement_visitor = {
   visit_declaration_statement: 'a -> Declaration.t -> 'b;
 }
 
-(* TODO discards the associated StmType *)
 let rec statement_visit_helper v acc (s_info: Prog.Statement.t) =
   let s_typ = snd s_info in
   match s_typ.stmt with
@@ -658,7 +607,6 @@ let headers_in_expression =
   expression_visit_helper expression_headers_visitor Search
 
 (**
-  TODO
   The next step is to have a collection of visitors that fetch every
   Expression.t from a program.
 *)
@@ -694,8 +642,6 @@ let exprs_match_visitor = {
 
 let exprs_match =
   match_visit_helper exprs_match_visitor ()
-
-(* TODO leaving out table for now *)
 
 (**
   These functions are for getting Expressions from Table data types.
@@ -800,7 +746,6 @@ and exprs_parser_visitor =
 and exprs_parser p_state =
   parser_visit_helper exprs_parser_visitor [] p_state
 
-(* TODO fields are irrelevant *)
 and exprs_declaration_visitor =
   let base2 = (fun l _ -> l) in
   let base3 = (fun l _ _ -> l) in
@@ -953,8 +898,7 @@ let get_all_headers (p: Prog.program) =
 
 (**
   This is the start of a group of visitors for collecting all of the headers
-  used in a program.
-  Currently, this visitor ignores mutual recursion.
+  declared in a program.
   Declarations, Statements, and Blocks are mutually recursive.
   A Parser can contain a Statement, and a Parser can be contained in a
   Declaration.
@@ -964,7 +908,6 @@ let get_all_headers (p: Prog.program) =
   A Parser can be contained in a Declaration.
   A Program cannot be contained in anything.
 *)
-(* TODO my interpretation of "header uses" was wrong *)
 let rec declaration_headers_visitor =
   let get_header_name = (fun _ _ name _ -> [name]) in
   let base2 = (fun _ _ -> []) in
@@ -1061,8 +1004,6 @@ and block_headers_visitor = {
   );
 }
 
-(* TODO no use for Expressions *)
-(* TODO make sure this is correct *)
 and parser_headers_visitor =
   let base2 = (fun l _ -> l) in
   let base3 = (fun l _ _ -> l) in

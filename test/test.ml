@@ -45,6 +45,14 @@ let typecheck_test (include_dirs : string list) (p4_file : string) : bool =
   | `Error (info, Parser.Error) -> false
   | `Error (info, err) -> false
 
+(**
+  TODO doesn't fit with format of other tests
+*)
+let headers_test (include_dirs : string list) (p4_file : string) : bool =
+  match Parse.headers_file include_dirs p4_file false with
+  | exception _ -> false
+  | _ -> true
+
 let get_files path =
   Sys.ls_dir path
   |> List.filter ~f:(fun name -> 
@@ -76,4 +84,6 @@ let () =
         test_case name `Quick (good_test typecheck_test name)) good_files);
     "typecheck tests bad", (Stdlib.List.map (fun name ->
         test_case name `Quick (bad_test typecheck_test name)) bad_files);
+    "headers tests good", (Stdlib.List.map (fun name ->
+         test_case name `Quick (good_test headers_test name)) good_files);
   ] 
