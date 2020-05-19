@@ -174,7 +174,6 @@ let rec expression_visit_helper v acc (e_info: Prog.Expression.t) =
                 args = t;
               }}))
     end
-    (* v.visit_nameless_instantiation acc typ args *)
   | DontCare -> v.visit_dont_care acc
   | Mask {expr; mask} ->
     let (acc_expr, acc_mask) = v.enter_mask acc in
@@ -375,7 +374,6 @@ type ('a, 'b) statement_visitor = {
   (* the right member of the output is unused in the None case *)
   enter_conditional: 'a -> Expression.t -> ('a * 'a);
   exit_conditional: 'b -> 'b option -> 'b;
-  (* visit_block_statement: 'a -> { block: Block.t } -> 'b; *)
   visit_block_statement: 'a -> Block.t -> 'b;
   visit_exit: 'a -> 'b;
   visit_empty_statement: 'a -> 'b;
@@ -408,7 +406,6 @@ let rec statement_visit_helper v acc (s_info: Prog.Statement.t) =
   | DeclarationStatement {decl} -> v.visit_declaration_statement acc decl
 
 (*
-Block not recursive
 Blocks contain annotations and statements
 Declarations and statements contain blocks
 Annotations contain expressions and Key Values
@@ -513,11 +510,8 @@ let rec key_value_headers_visitor = {
 }
 
 (**
-  TODO This is just a guess at how header structure works now.
   Compose headers from ExpressionMember constructors whose children are either
   Name or ExpressionMember.
-  TODO reverses header names, putting things before the dot when they should
-  come afterward and vice versa
 *)
 and expression_headers_visitor =
   let base1 = (fun _ -> []) in
@@ -550,7 +544,7 @@ and expression_headers_visitor =
   exit_list_cons = exit2;
   visit_record = begin fun x kv_list ->
     let header_lists =
-      List.map
+      List.rev_map
         (key_value_visit_helper key_value_headers_visitor (end_construct x))
         kv_list
     in List.fold_left (@) [] header_lists
@@ -662,13 +656,11 @@ let rec exprs_statement_visitor =
   visit_method_call = begin fun acc e _ e_opt_lst ->
     let e_lst = List.filter_map (fun x -> x) e_opt_lst in
     e :: e_lst
-    (* let e_some_lst = (List.filter Option.is_some e_opt_lst) in
-    e :: (List.map Option.get e_some_lst) @ acc *)
     end;
   (* TODO is assignment special? *)
   visit_assignment = (fun acc e1 e2 -> e1 :: e2 :: acc);
   visit_direct_application = (fun acc _ e_lst -> e_lst @ acc);
-  (* TODO put on left so not discarded if right branch is None *)
+  (* put on left so not discarded if right branch is None *)
   enter_conditional = (fun acc e -> (e :: acc, []));
   exit_conditional = begin fun l1 l2 ->
     match l2 with
@@ -875,7 +867,6 @@ let exprs_program_visitor = {
 let all_expressions =
   program_visit_helper exprs_program_visitor ()
 
-(** TODO is the folding inefficient? *)
 let get_all_headers (p: Prog.program) =
   let exprs = all_expressions p in
   let header_lists = List.rev_map headers_in_expression exprs in
@@ -979,7 +970,6 @@ and statement_headers_visitor =
     declaration_visit_helper declaration_headers_visitor acc decl);
 }
 
-(* TODO map not tail recursive *)
 and block_headers_visitor = {
   visit_block = (fun acc _ statements ->
     let header_lists =
