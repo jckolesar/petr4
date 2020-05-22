@@ -213,6 +213,24 @@ val parser_visit_helper:
 val program_visit_helper:
   ('a, 'b) program_visitor -> 'a -> Prog.program -> 'b
 
+(**
+  [headers_in_expression e] is a list of all of the headers used in the
+  Expression [e].  The list can contain duplicates, and the order of headers
+  within the list is unspecified.
+*)
 val headers_in_expression: Prog.Expression.t -> string list
 
-val get_all_headers: Prog.program -> string list
+(**
+  [all_headers p] is a list of all of the headers used in the program [p].  The
+  list does not contain duplicates, and the headers appear in sorted order
+  within the list.  A header does not appear in the list if it is declared but
+  never used.
+*)
+val all_headers: Prog.program -> string list
+
+(**
+  [all_header_declarations p] is a list of all of the headers declared in the
+  program [p].  The list does not contain duplicates, and the headers appear in
+  sorted order within the list.
+*)
+val all_header_declarations: Prog.program -> string list

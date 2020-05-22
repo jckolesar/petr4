@@ -89,15 +89,11 @@ module Make_parse (Conf: Parse_config) = struct
         let info_string = Info.to_string info in
         info_string ^ "\n" ^ exn_msg
 
-    (**
-      TODO adding "get headers" function to frontend
-      TODO When does the conversion from Types.program to Prog.program happen?
-    *)
     let headers_file include_dirs p4_file verbose =
       match parse_file include_dirs p4_file verbose with
       | `Ok prog ->
         let prog' = snd (Checker.check_program prog) in
-        let headers = List.rev (Visitor.get_all_headers prog') in
+        let headers = List.rev (Visitor.all_headers prog') in
         begin match headers with
         | [] -> "[]"
         | h :: t ->

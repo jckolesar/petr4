@@ -405,11 +405,6 @@ let rec statement_visit_helper v acc (s_info: Prog.Statement.t) =
   | Switch {expr; cases} -> v.visit_switch acc expr cases
   | DeclarationStatement {decl} -> v.visit_declaration_statement acc decl
 
-(*
-Blocks contain annotations and statements
-Declarations and statements contain blocks
-Annotations contain expressions and Key Values
-*)
 type ('a, 'b) block_visitor = {
   visit_block: 'a -> Annotation.t list -> Statement.t list -> 'b;
 }
@@ -452,9 +447,6 @@ type ('a, 'b) program_visitor = {
   exit_program_cons: 'b -> 'b -> 'b;
 }
 
-(**
-  The Program type does not contain info.
-*)
 let rec program_visit_helper v acc (p: Prog.program) =
   match p with
   | Program [] -> v.visit_program_nil acc
@@ -467,8 +459,8 @@ let rec program_visit_helper v acc (p: Prog.program) =
 (* Example uses of the visitor structures *)
 
 (**
-  This visitor determines the number of nodes in a Statement.t.  It ignores
-  all other Petr4 AST types.
+  [statement_count_visitor] determines the number of nodes in a [Statement.t].
+  It ignores mutual recursion with all other Petr4 AST types.
 *)
 let statement_count_visitor =
   let base1 = (fun _ -> 1) in
@@ -494,15 +486,36 @@ let statement_count_visitor =
   visit_declaration_statement = base2;
 }
 
+(**
+  [statement_count_visitor] converted into a usable function.
+*)
 let statement_count =
   statement_visit_helper statement_count_visitor ()
 
+(**
+  The type of the downward accumulator for [expression_headers_visitor].  The
+  [Search] constructor indicates that the visitor is not currently in the
+  process of traversing nodes in an [Expression.t] that represent a header use.
+  The [Construct] constructor allows for the assembly of a header's full name
+  as the visitor traverses the nodes that represent it.
+*)
 type header_visit_state =
   | Search
   | Construct of string
 
+(**
+  This function ends the process of assembling a header name in the event that
+  a sequence of nodes that appears to represent a header use at first does not
+  actually represent a header use.
+*)
 let end_construct x = Search
 
+(**
+  The [KeyValue.t] and [Expression.t] types in the Petr4 AST are mutually
+  recursive, so [key_value_headers_visitor] exists in order to allow
+  [expression_headers_visitor] to extract the [Expression.t] contained in a
+  [KeyValue.t].
+*)
 let rec key_value_headers_visitor = {
   visit_key_value = begin fun acc _ e_info ->
     expression_visit_helper expression_headers_visitor acc e_info
@@ -510,8 +523,9 @@ let rec key_value_headers_visitor = {
 }
 
 (**
-  Compose headers from ExpressionMember constructors whose children are either
-  Name or ExpressionMember.
+  [expression_headers_visitor] is the main visitor that [headers_in_expression]
+  utilizes.  It contains the functions for assembling header names from the
+  collections of nodes that represent header uses.
 *)
 and expression_headers_visitor =
   let base1 = (fun _ -> []) in
@@ -586,9 +600,9 @@ and expression_headers_visitor =
 let headers_in_expression =
   expression_visit_helper expression_headers_visitor Search
 
-(**
-  The next step is to have a collection of visitors that fetch every
-  Expression.t from a program.
+(*
+  The following visitors perform the task of fetching every [Expression.t]
+  contained in a program.
 *)
 
 let exprs_type_parameter_visitor = {
@@ -623,19 +637,31 @@ let exprs_match_visitor = {
 let exprs_match =
   match_visit_helper exprs_match_visitor ()
 
-(**
+(*
   These functions are for getting Expressions from Table data types.
   The ordinary visitor structure does not make sense for them.
   The ones that always contain exactly one Expression do not return lists.
 *)
 
+(**
+  [exprs_table_action_ref] extracts an [Expression.t] list from the list of
+  arguments in a [Table.action_ref].
+*)
 let exprs_table_action_ref (ar_info: Prog.Table.action_ref) =
   let ar = (snd ar_info).action in
   List.filter_map (fun e_opt -> e_opt) ar.args
 
+(**
+  [exprs_table_key] extracts the single [Expression.t] contained in a
+  [Table.key].
+*)
 let exprs_table_key (k_info: Prog.Table.key) =
   (snd k_info).key
 
+(**
+  [exprs_table_entry] extracts the [Expression.t] values contained within
+  every [Match.t] in a [Table.entry].
+*)
 let exprs_table_entry (e_info: Prog.Table.entry) =
   let e = snd e_info in
   e.matches |>
@@ -643,6 +669,10 @@ let exprs_table_entry (e_info: Prog.Table.entry) =
   (List.fold_left (@) []) |>
   ((@) (exprs_table_action_ref e.action))
 
+(**
+  [exprs_table_property] extracts the single [Expression.t] contained in a
+  [Table.property].
+*)
 let exprs_table_property (p_info: Prog.Table.property) =
   (snd p_info).value
 
@@ -657,7 +687,7 @@ let rec exprs_statement_visitor =
     let e_lst = List.filter_map (fun x -> x) e_opt_lst in
     e :: e_lst
     end;
-  (* TODO is assignment special? *)
+  (* nothing special for assignment *)
   visit_assignment = (fun acc e1 e2 -> e1 :: e2 :: acc);
   visit_direct_application = (fun acc _ e_lst -> e_lst @ acc);
   (* put on left so not discarded if right branch is None *)
@@ -864,26 +894,27 @@ let exprs_program_visitor = {
   exit_program_cons = (@);
 }
 
+(**
+  [all_expressions p] is a list of [Expression.t] values from the program [p]
+  such that every [Expression.t] that is a sub-term of [p] is either a member
+  of the list or a sub-term of a member of the list.  The order of values
+  within the list is unspecified.
+*)
 let all_expressions =
   program_visit_helper exprs_program_visitor ()
 
-let get_all_headers (p: Prog.program) =
+let all_headers (p: Prog.program) =
   let exprs = all_expressions p in
   let header_lists = List.rev_map headers_in_expression exprs in
   let headers = List.fold_left (@) [] header_lists in
   List.sort_uniq Stdlib.compare headers
 
 (**
-  This is the start of a group of visitors for collecting all of the headers
-  declared in a program.
-  Declarations, Statements, and Blocks are mutually recursive.
-  A Parser can contain a Statement, and a Parser can be contained in a
-  Declaration.
-  A Statement can be contained in either a Block or a Parser.
-  A Block can be contained in a Statement or a Declaration.
-  A Declaration can be contained in a Program or a Statement.
-  A Parser can be contained in a Declaration.
-  A Program cannot be contained in anything.
+  This is the main visitor for the [all_header_declarations] function.  Header
+  declarations can only appear in values of type [Declaration.t].  The other
+  four visitors for the function are necessary because [Declaration.t] is
+  mutually recursive with [Statement.t], [Block.t], and [Parser.state] and
+  because a [program] is a [Declaration.t] list.
 *)
 let rec declaration_headers_visitor =
   let get_header_name = (fun _ _ name _ -> [name]) in
@@ -943,7 +974,11 @@ let rec declaration_headers_visitor =
   visit_package_type = base5;
 }
 
-(* Statement can contain Declaration or Block, but not Parser *)
+(**
+  This collects all of the header declarations within a [Statement.t].  Direct
+  header collection occurs only within the functions in
+  [declaration_headers_visitor].
+*)
 and statement_headers_visitor =
   let base1 = (fun _ -> []) in
   let base2 = (fun _ _ -> []) in
@@ -970,6 +1005,11 @@ and statement_headers_visitor =
     declaration_visit_helper declaration_headers_visitor acc decl);
 }
 
+(**
+  This collects all of the header declarations within a [Block.t].  Direct
+  header collection occurs only within the functions in
+  [declaration_headers_visitor].
+*)
 and block_headers_visitor = {
   visit_block = (fun acc _ statements ->
     let header_lists =
@@ -980,6 +1020,11 @@ and block_headers_visitor = {
   );
 }
 
+(**
+  This collects all of the header declarations within a [Parser.state].  Direct
+  header collection occurs only within the functions in
+  [declaration_headers_visitor].
+*)
 and parser_headers_visitor =
   let base2 = (fun l _ -> l) in
   let base3 = (fun l _ _ -> l) in
@@ -1001,6 +1046,9 @@ and parser_headers_visitor =
   visit_case = base3;
 }
 
+(**
+  The outermost visitor for [all_header_declarations].
+*)
 let program_headers_visitor = {
   visit_program_nil= (fun _ -> []);
   visit_single_declaration =
@@ -1009,6 +1057,8 @@ let program_headers_visitor = {
   exit_program_cons = (@);
 }
 
-let all_headers (p: Prog.program) =
+let all_header_declarations (p: Prog.program) =
   let headers = program_visit_helper program_headers_visitor () p in
-  List.sort_uniq (Stdlib.compare) headers
+  (* P4String.t is string info *)
+  let strings = List.rev_map snd headers in
+  List.sort_uniq (Stdlib.compare) strings

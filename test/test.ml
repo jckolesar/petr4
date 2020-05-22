@@ -45,9 +45,6 @@ let typecheck_test (include_dirs : string list) (p4_file : string) : bool =
   | `Error (info, Parser.Error) -> false
   | `Error (info, err) -> false
 
-(**
-  TODO doesn't fit with format of other tests
-*)
 let headers_test (include_dirs : string list) (p4_file : string) : bool =
   match Parse.headers_file include_dirs p4_file false with
   | exception _ -> false
